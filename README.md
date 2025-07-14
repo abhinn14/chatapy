@@ -4,4 +4,4 @@ I built a real-time chat app using MERN, JWT, and Socket.io that supported concu
 
 ![Signin page](https://ibb.co/21FT2HXj)
 
-![Chatting page]([https://ibb.co/21FT2HXj](https://ibb.co/QvyVPRvT))
+![Chatting page](https://ibb.co/QvyVPRvT)
