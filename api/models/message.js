@@ -12,9 +12,11 @@ const msgSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    text: {
-      type: String,
-    }
+    encrypted: {
+      iv: { type: String, required: true },
+      ciphertext: { type: String, required: true },
+    },
+
   },
   {timestamps:true}
 );
