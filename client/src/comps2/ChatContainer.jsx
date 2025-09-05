@@ -14,12 +14,6 @@ export default function ChatContainer() {
   const messageEndRef = useRef(null);
 
   useEffect(() => {
-    getMessages(selectedUser._id);
-    subscribeToMessages();
-    return () => unsubscribeFromMessages();
-  },[selectedUser._id,getMessages,subscribeToMessages,unsubscribeFromMessages]);
-
-  useEffect(() => {
     if(messages && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({behavior:"smooth"});
     }

@@ -12,7 +12,7 @@ export default function MessageInput () {
     if(!text.trim())
       return;
     try {
-      await sendMessage({text:text.trim()});
+      await sendMessage(text.trim());
       // Clear form
       setText("");
       if(fileInputRef.current)

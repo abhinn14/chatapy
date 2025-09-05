@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 
 import {axiosInstance} from "../library/axios.js";
+import { useChatStore } from "./useChatStore.js";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5000": "/";
 
@@ -83,6 +84,10 @@ export const useStore = create((set,get) => ({
       socket.connect();
    
       set({socket:socket});
+
+      useChatStore.getState().initCrypto();
+
+      useChatStore.getState().subscribeToMessages();
   
       socket.on("getOnlineUsers",(userIds) => {
         set({onlineUsers:userIds});
@@ -90,8 +95,10 @@ export const useStore = create((set,get) => ({
     },
 
     disconnectSocket: () => {
-      if(get().socket?.connected)
+      if(get().socket?.connected) {
+        useChatStore.getState().unsubscribeFromMessages();
         get().socket.disconnect();
+      }
     }
 
 }));
