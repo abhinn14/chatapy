@@ -73,26 +73,38 @@ export const useStore = create((set,get) => ({
 
 
     connectSocket: () => {
-      const {authUser} = get();
-      if (!authUser || get().socket?.connected) return;
-  
-      const socket = io(BASE_URL, {
-        query: {
-          userId: authUser._id,
-        },
-      });
-      socket.connect();
-   
-      set({socket:socket});
+  const { authUser } = get();
+  if (!authUser) return;
+  // avoid creating a second socket if already connected or connecting
+  if (get().socket?.connected || get().socket?._connecting) return;
 
-      useChatStore.getState().initCrypto();
+  // create socket with query userId (server expects query.userId)
+  const socket = io(BASE_URL, {
+    query: { userId: authUser._id },
+    transports: ["websocket", "polling"],
+    withCredentials: true,
+  });
 
-      useChatStore.getState().subscribeToMessages();
-  
-      socket.on("getOnlineUsers",(userIds) => {
-        set({onlineUsers:userIds});
-      });
-    },
+  // store socket as soon as possible
+  set({ socket });
+
+  // ensure we call subscribe/init *after* socket is actually connected
+  socket.on("connect", () => {
+    console.log("[Socket] connected", socket.id);
+    // init crypto and subscribe once socket connected
+    useChatStore.getState().initCrypto().catch((e)=>console.warn("initCrypto error",e));
+    useChatStore.getState().subscribeToMessages();
+  });
+
+  socket.on("connect_error", (err) => {
+    console.error("[Socket] connect_error", err);
+  });
+
+  // online user updates
+  socket.on("getOnlineUsers", (userIds) => {
+    set({ onlineUsers: userIds });
+  });
+},
 
     disconnectSocket: () => {
       if(get().socket?.connected) {

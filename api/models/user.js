@@ -10,7 +10,8 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         minlength: 5
-    }
+    },
+    publicKeyJwk: { type: Object } 
 },{timestamps:true});
 
 const User = mongoose.model("User",userSchema);
