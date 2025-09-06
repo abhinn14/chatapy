@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { axiosInstance } from "../library/axios.js";
 import { useStore } from "./store.js";
 
-/* ---------------- Utils ---------------- */
+/* ---------------- Crypto helpers ---------------- */
 
 function u8ToBase64(u8) {
   let binary = "";
@@ -18,13 +18,6 @@ function base64ToU8(b64) {
   for (let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
   return u8;
 }
-
-function normalizeId(msg) {
-  if (!msg) return null;
-  return String(msg._id || msg.id || msg.messageId || "");
-}
-
-/* ---------------- Crypto helpers ---------------- */
 
 async function generateECDHKeyPair() {
   const keyPair = await crypto.subtle.generateKey(
@@ -61,7 +54,8 @@ async function encryptMessage(plain, aesKey) {
   const encoder = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoder.encode(plain));
-  return { iv: u8ToBase64(iv), ciphertext: u8ToBase64(new Uint8Array(ct)) };
+  const ctU8 = new Uint8Array(ct);
+  return { iv: u8ToBase64(iv), ciphertext: u8ToBase64(ctU8) };
 }
 
 async function decryptMessage({ iv, ciphertext }, aesKey) {
@@ -72,47 +66,11 @@ async function decryptMessage({ iv, ciphertext }, aesKey) {
   return decoder.decode(pt);
 }
 
-/* ---------------- waitForAESKey ---------------- */
-async function waitForAESKey(userId, timeoutMs = 5000, options = { tryOfflineDerive: true }) {
-  const start = Date.now();
-  const getState = () => useChatStore.getState();
-  const setState = (patch) => useChatStore.setState(patch);
+/* ---------------- Helper ---------------- */
 
-  const existing = getState().aesKeys?.[userId];
-  if (existing) return existing;
-
-  return new Promise((resolve) => {
-    const interval = setInterval(async () => {
-      const key = getState().aesKeys?.[userId];
-      if (key) {
-        clearInterval(interval);
-        resolve(key);
-        return;
-      }
-
-      if (Date.now() - start > timeoutMs) {
-        clearInterval(interval);
-        if (!options.tryOfflineDerive) return resolve(null);
-
-        try {
-          const localPrivate = getState().keyPair?.privateKey;
-          if (!localPrivate) return resolve(null);
-
-          const resp = await axiosInstance.get(`/auth/user/${userId}/public-key`);
-          const peerPub = resp?.data;
-          if (!peerPub) return resolve(null);
-
-          const imported = await importPublicKey(peerPub);
-          const derived = await deriveAESKey(localPrivate, imported);
-          setState((s) => ({ aesKeys: { ...(s.aesKeys || {}), [userId]: derived } }));
-          return resolve(derived);
-        } catch (err) {
-          console.warn("waitForAESKey fallback failed:", err);
-          return resolve(null);
-        }
-      }
-    }, 50);
-  });
+function normalizeId(msg) {
+  if (!msg) return null;
+  return String(msg._id || msg.id || msg.messageId || "");
 }
 
 /* ---------------- Zustand store ---------------- */
@@ -128,8 +86,6 @@ export const useChatStore = create((set, get) => ({
   publicKeyJwk: null,
   aesKeys: {}, // userId -> CryptoKey
   cryptoInitialized: false,
-  pendingDecrypts: {}, // userId -> array of pending messages
-  pendingOutgoing: {}, // userId -> array of queued outgoing texts
 
   /* initCrypto */
   initCrypto: async () => {
@@ -194,34 +150,6 @@ export const useChatStore = create((set, get) => ({
           const imported = await importPublicKey(publicKey);
           const aesKey = await deriveAESKey(get().keyPair.privateKey, imported);
           set((s) => ({ aesKeys: { ...s.aesKeys, [from]: aesKey } }));
-
-          // retry pending decrypts
-          const pending = get().pendingDecrypts[from] || [];
-          if (pending.length > 0) {
-            const fixed = await Promise.all(
-              pending.map(async (msg) => {
-                try {
-                  const text = await decryptMessage(msg.encrypted, aesKey);
-                  return { ...msg, text };
-                } catch {
-                  return { ...msg, text: "🔒 Encrypted Message" };
-                }
-              })
-            );
-            set((s) => ({
-              messages: [...s.messages.filter((m) => !pending.some((p) => normalizeId(p) === normalizeId(m))), ...fixed],
-              pendingDecrypts: { ...s.pendingDecrypts, [from]: [] },
-            }));
-          }
-
-          // retry pending outgoing
-          const out = get().pendingOutgoing[from] || [];
-          for (const text of out) {
-            await get().sendMessage(text);
-          }
-          set((s) => ({ pendingOutgoing: { ...s.pendingOutgoing, [from]: [] } }));
-
-          // echo our public key
           const ourPub = get().publicKeyJwk;
           if (ourPub) socket.emit("send-public-key", { to: from, publicKey: ourPub });
         } catch (err) {
@@ -256,8 +184,8 @@ export const useChatStore = create((set, get) => ({
       const key = await waitForAESKey(userId, 5000, { tryOfflineDerive: true });
       if (!key) {
         set({
-          messages: msgs.map((msg) => ({ ...msg, text: "🔒 Encrypted Message" })),
-          isMessagesLoading: false,
+          messages: msgs.map(msg => ({ ...msg, text: "🔒 Encrypted Message" })),
+          isMessagesLoading: false
         });
         return;
       }
@@ -285,19 +213,18 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+
   /* setSelectedUser */
   setSelectedUser: async (user) => {
     set({ selectedUser: user, messages: [], isMessagesLoading: true });
     await get().initCrypto();
-
-    const socket = useStore.getState().socket;
     const { publicKeyJwk, aesKeys } = get();
+    const socket = useStore.getState().socket;
 
     if (publicKeyJwk && socket && !aesKeys[user._id]) {
       socket.emit("send-public-key", { to: user._id, publicKey: publicKeyJwk });
     }
 
-    await waitForAESKey(user._id, 5000, { tryOfflineDerive: true });
     await get().getMessages(user._id);
   },
 
@@ -306,13 +233,9 @@ export const useChatStore = create((set, get) => ({
     const { selectedUser } = get();
     if (!selectedUser) return;
 
-    const key = await waitForAESKey(selectedUser._id, 5000, { tryOfflineDerive: true });
+    const key = await waitForAESKey(selectedUser._id, 3000, { tryOfflineDerive: true });
     if (!key) {
-      // queue message for later
-      set((s) => ({
-        pendingOutgoing: { ...(s.pendingOutgoing || {}), [selectedUser._id]: [...(s.pendingOutgoing[selectedUser._id] || []), text] },
-      }));
-      toast("Message queued until encryption key is ready");
+      toast.error("Encryption key not ready!");
       return;
     }
 
@@ -341,38 +264,50 @@ export const useChatStore = create((set, get) => ({
     socket.on("newMessage", async ({ from, msg }) => {
       try {
         const authUser = useStore.getState().authUser;
-        if (authUser && String(from) === String(authUser._id)) return; // ignore echoes
+        // Ignore echoes of messages sent by *this* client (prevents overwrite/race)
+        if (authUser && String(from) === String(authUser._id)) {
+          // optionally: you could still merge some non-text fields here if needed
+          return;
+        }
 
+        // normal incoming-message flow for messages from other users
         const curMsgs = get().messages || [];
         const incomingId = normalizeId(msg);
         const existsIndex = curMsgs.findIndex((m) => normalizeId(m) === incomingId);
 
-        const key = await waitForAESKey(from, 300, { tryOfflineDerive: false });
-        if (key && msg.encrypted?.iv) {
+        if (existsIndex !== -1) {
+          // existing message from other user — try to update text only if decrypt succeeds
+          const oldMsg = curMsgs[existsIndex];
+          let updated = [...curMsgs];
+
           try {
-            const text = await decryptMessage(msg.encrypted, key);
-            if (existsIndex !== -1) {
-              const updated = [...curMsgs];
-              updated[existsIndex] = { ...curMsgs[existsIndex], ...msg, text };
+            const liveKey = await waitForAESKey(from, 300, { tryOfflineDerive: false });
+            if (liveKey && msg.encrypted?.iv) {
+              const text = await decryptMessage(msg.encrypted, liveKey);
+              updated[existsIndex] = { ...oldMsg, ...msg, text };
               set({ messages: updated });
-            } else {
-              set({ messages: [...curMsgs, { ...msg, text }] });
             }
-            return;
-          } catch {}
+            // if decrypt failed: keep existing text (do not downgrade)
+          } catch (e) {
+            console.warn("Decrypt failed while updating existing incoming message:", e);
+          }
+          return;
         }
 
-        // if key not ready or decrypt fails
-        if (existsIndex !== -1) {
-          const updated = [...curMsgs];
-          updated[existsIndex] = { ...curMsgs[existsIndex], ...msg, text: "🔒 Encrypted Message" };
-          set({ messages: updated });
-        } else {
-          set({ messages: [...curMsgs, { ...msg, text: "🔒 Encrypted Message" }] });
+        // brand new message from another user
+        try {
+          const liveKey = await waitForAESKey(from, 300, { tryOfflineDerive: false });
+          if (liveKey && msg.encrypted?.iv) {
+            const text = await decryptMessage(msg.encrypted, liveKey);
+            set({ messages: [...curMsgs, { ...msg, text }] });
+            return;
+          }
+        } catch (e) {
+          console.warn("Live decrypt failed for new incoming message:", e);
         }
-        set((s) => ({
-          pendingDecrypts: { ...(s.pendingDecrypts || {}), [from]: [...(s.pendingDecrypts[from] || []), msg] },
-        }));
+
+        // fallback: append locked placeholder
+        set({ messages: [...curMsgs, { ...msg, text: "🔒 Encrypted Message" }] });
       } catch (outer) {
         console.error("subscribeToMessages handler error:", outer);
       }
@@ -384,3 +319,46 @@ export const useChatStore = create((set, get) => ({
     if (socket) socket.off("newMessage");
   },
 }));
+
+/* ---------------- waitForAESKey ---------------- */
+async function waitForAESKey(userId, timeoutMs = 2000, options = { tryOfflineDerive: true }) {
+  const start = Date.now();
+  const getState = () => useChatStore.getState();
+  const setState = (patch) => useChatStore.setState(patch);
+
+  const existing = getState().aesKeys?.[userId];
+  if (existing) return existing;
+
+  return new Promise((resolve) => {
+    const interval = setInterval(async () => {
+      const key = getState().aesKeys?.[userId];
+      if (key) {
+        clearInterval(interval);
+        resolve(key);
+        return;
+      }
+
+      if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        if (!options.tryOfflineDerive) return resolve(null);
+
+        try {
+          const localPrivate = getState().keyPair?.privateKey;
+          if (!localPrivate) return resolve(null);
+
+          const resp = await axiosInstance.get(`/auth/user/${userId}/public-key`);
+          const peerPub = resp?.data;
+          if (!peerPub) return resolve(null);
+
+          const imported = await importPublicKey(peerPub);
+          const derived = await deriveAESKey(localPrivate, imported);
+          setState((s) => ({ aesKeys: { ...(s.aesKeys || {}), [userId]: derived } }));
+          return resolve(derived);
+        } catch (err) {
+          console.warn("waitForAESKey fallback failed:", err);
+          return resolve(null);
+        }
+      }
+    }, 50);
+  });
+}
