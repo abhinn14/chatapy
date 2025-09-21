@@ -1,21 +1,22 @@
-import React from 'react';
-import {useState,useEffect} from 'react';
-import {Routes,Route,Navigate} from 'react-router-dom';
-import {Toaster} from 'react-hot-toast';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 
 import Navbar from './comps/Navbar.jsx';
 import HomePage from './comps/HomePage.jsx';
 import SignupPage from './comps/SignupPage.jsx';
 import LoginPage from './comps/LoginPage.jsx';
-import {useStore} from './store/store.js';
+import { useStore } from './store/store.js';
 
 
 function App() {
 
-  const {authUser,checkAuth,isCheckingAuth,onlineUsers} = useStore();
-  useEffect(() => {checkAuth()},[checkAuth]);
+  const { authUser, checkAuth, isCheckingAuth } = useStore();
 
-  if(isCheckingAuth && !checkAuth) {return (<img className='w-10 h-10' src={loaderGif}/>);}
+  useEffect(() => {checkAuth()},[ checkAuth ]);
+
+  if(isCheckingAuth && !checkAuth)
+    {return (<img className='w-10 h-10' src={loaderGif}/>);}
 
   return (
     <div>

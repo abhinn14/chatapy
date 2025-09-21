@@ -1,10 +1,11 @@
-import {create} from "zustand";
+import { create } from "zustand";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 
-import {axiosInstance} from "../library/axios.js";
+import { axiosInstance } from "../library/axios.js";
 import { useChatStore } from "./useChatStore.js";
 
+// this is for websocket only. For rest = it's in axios.js
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5000": "/";
 
 export const useStore = create((set,get) => ({
@@ -20,13 +21,13 @@ export const useStore = create((set,get) => ({
         try {
           const res = await axiosInstance.get("/auth/check");
     
-          set({authUser:res.data});
+          set({authUser: res.data});
           get().connectSocket();
-        } catch (err) {
+        } catch(err) {
           console.log("Error in checkAuth = ",err);
-          set({ authUser:null});
+          set({ authUser:null });
         } finally {
-          set({isCheckingAuth:false});
+          set({ isCheckingAuth: false });
         }
     },
 
@@ -73,38 +74,37 @@ export const useStore = create((set,get) => ({
 
 
     connectSocket: () => {
-  const { authUser } = get();
-  if (!authUser) return;
-  // avoid creating a second socket if already connected or connecting
-  if (get().socket?.connected || get().socket?._connecting) return;
+      const { authUser } = get();
+      if(!authUser) return;
 
-  // create socket with query userId (server expects query.userId)
-  const socket = io(BASE_URL, {
-    query: { userId: authUser._id },
-    transports: ["websocket", "polling"],
-    withCredentials: true,
-  });
+      // if already connected/connecting
+      if(get().socket?.connected || get().socket?._connecting)
+        return;
 
-  // store socket as soon as possible
-  set({ socket });
+      // creating socket with query userId, server expects query.userId
+      const socket = io(BASE_URL, {
+        query: { userId: authUser._id },
+        transports: ["websocket", "polling"],
+        withCredentials: true,
+      });
 
-  // ensure we call subscribe/init *after* socket is actually connected
-  socket.on("connect", () => {
-    console.log("[Socket] connected", socket.id);
-    // init crypto and subscribe once socket connected
-    useChatStore.getState().initCrypto().catch((e)=>console.warn("initCrypto error",e));
-    useChatStore.getState().subscribeToMessages();
-  });
+      set({ socket });
 
-  socket.on("connect_error", (err) => {
-    console.error("[Socket] connect_error", err);
-  });
+      socket.on("connect", () => {
+        console.log("[Socket] connected", socket.id);
+        useChatStore.getState().initCrypto().catch((e)=>console.warn("initCrypto error",e));
+        useChatStore.getState().subscribeToMessages();
+      });
 
-  // online user updates
-  socket.on("getOnlineUsers", (userIds) => {
-    set({ onlineUsers: userIds });
-  });
-},
+      socket.on("connect_error", (err) => {
+        console.error("[Socket] connect_error", err);
+      });
+
+      // updating online users
+      socket.on("getOnlineUsers", (userIds) => {
+        set({ onlineUsers: userIds });
+      });
+    },
 
     disconnectSocket: () => {
       if(get().socket?.connected) {

@@ -1,9 +1,8 @@
+// useChatStore.js
 import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../library/axios.js";
 import { useStore } from "./store.js";
-
-/* ---------------- Crypto helpers ---------------- */
 
 function u8ToBase64(u8) {
   let binary = "";
@@ -26,7 +25,7 @@ async function generateECDHKeyPair() {
     ["deriveKey"]
   );
   const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-  console.log("🔑 [Crypto] Generated ECDH key pair");
+  console.log("ECDH key pair generated");
   return { keyPair, publicKeyJwk };
 }
 
@@ -66,259 +65,353 @@ async function decryptMessage({ iv, ciphertext }, aesKey) {
   return decoder.decode(pt);
 }
 
-/* ---------------- Helper ---------------- */
-
 function normalizeId(msg) {
   if (!msg) return null;
-  return String(msg._id || msg.id || msg.messageId || "");
+  return String(msg._id || msg.id || "");
 }
 
-/* ---------------- Zustand store ---------------- */
+export const useChatStore = create((set, get) => {
+  // ------- Helper functions inside the store closure -------
 
-export const useChatStore = create((set, get) => ({
-  messages: [],
-  users: [],
-  selectedUser: null,
-  isUsersLoading: false,
-  isMessagesLoading: false,
+  function normalizeEncryptedFingerprint(encrypted) {
+    if (!encrypted) return null;
+    return String(encrypted.ciphertext || encrypted.ct || "");
+  }
 
-  keyPair: null,
-  publicKeyJwk: null,
-  aesKeys: {}, // userId -> CryptoKey
-  cryptoInitialized: false,
+  function findExistingMessageIndex(list, incomingMsg) {
+    if (!Array.isArray(list)) return -1;
+    const incomingId = normalizeId(incomingMsg);
+    const incomingCt = normalizeEncryptedFingerprint(incomingMsg.encrypted);
+    const incomingCreated = incomingMsg.createdAt ? String(incomingMsg.createdAt) : null;
 
-  /* initCrypto */
-  initCrypto: async () => {
-    if (get().cryptoInitialized) return;
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      const mid = normalizeId(m);
+      if (mid && incomingId && String(mid) === String(incomingId)) return i;
 
-    const { authUser } = useStore.getState();
-    if (!authUser) return;
+      const mct = normalizeEncryptedFingerprint(m.encrypted);
+      if (mct && incomingCt && mct === incomingCt) return i;
 
-    const privJwkStr = localStorage.getItem(`privkey_${authUser._id}`);
-    let keyPair = null;
-    let publicKeyJwk = null;
+      const mcreated = m.createdAt ? String(m.createdAt) : null;
+      if (mcreated && incomingCreated && mcreated === incomingCreated) return i;
+    }
+    return -1;
+  }
 
-    if (privJwkStr) {
-      try {
-        const privJwk = JSON.parse(privJwkStr);
-        const privateKey = await crypto.subtle.importKey(
-          "jwk",
-          privJwk,
-          { name: "ECDH", namedCurve: "P-256" },
-          true,
-          ["deriveKey"]
-        );
-        keyPair = { privateKey, publicKey: null };
+  function upsertMessageForUser(userId, incomingMsg) {
+    set((state) => {
+      const map = state.messagesByUser || {};
+      const list = map[userId] ? [...map[userId]] : [];
+      const idx = findExistingMessageIndex(list, incomingMsg);
 
-        const localPub = localStorage.getItem(`pubkey_${authUser._id}`);
-        if (localPub) {
-          publicKeyJwk = JSON.parse(localPub);
+      if (idx !== -1) {
+        const existing = list[idx];
+        const newIsLocked = !incomingMsg.text || incomingMsg.text === "🔒 Encrypted Message";
+        const existingHasPlain = existing.text && existing.text !== "🔒 Encrypted Message";
+
+        if (existingHasPlain && newIsLocked) {
+          // Keep existing decrypted text (no downgrade)
+          list[idx] = existing;
         } else {
-          try {
-            const res = await axiosInstance.get(`/auth/user/${authUser._id}/public-key`);
-            publicKeyJwk = res.data || null;
-          } catch {
-            publicKeyJwk = null;
+          // Merge and update
+          list[idx] = { ...existing, ...incomingMsg };
+        }
+      } else {
+        list.push(incomingMsg);
+      }
+
+      // Keep stable order by createdAt if available
+      list.sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return ta - tb;
+      });
+
+      return { messagesByUser: { ...map, [userId]: list } };
+    });
+  }
+
+  // ------- Store state and methods -------
+
+  return {
+    messages: [],
+    users: [],
+    selectedUser: null,
+    isUsersLoading: false,
+    isMessagesLoading: false,
+    messagesByUser: {},
+
+    keyPair: null,
+    publicKeyJwk: null,
+    aesKeys: {}, // userId -> CryptoKey
+    cryptoInitialized: false,
+
+    initCrypto: async () => {
+      if (get().cryptoInitialized) return;
+
+      const { authUser } = useStore.getState();
+      if (!authUser) return;
+
+      const privJwkStr = localStorage.getItem(`privkey_${authUser._1d || authUser._id}`);
+      let keyPair = null;
+      let publicKeyJwk = null;
+
+      // Note: some builds might have _1d typo; prefer _id
+      // but handle both just in case
+      try {
+        const maybeId = authUser._id || authUser._1d;
+        const privKeyStorage = localStorage.getItem(`privkey_${maybeId}`);
+        if (privKeyStorage) {
+          const privJwk = JSON.parse(privKeyStorage);
+          const privateKey = await crypto.subtle.importKey(
+            "jwk",
+            privJwk,
+            { name: "ECDH", namedCurve: "P-256" },
+            true,
+            ["deriveKey"]
+          );
+          keyPair = { privateKey, publicKey: null };
+
+          const localPub = localStorage.getItem(`pubkey_${maybeId}`);
+          if (localPub) {
+            publicKeyJwk = JSON.parse(localPub);
+          } else {
+            try {
+              const res = await axiosInstance.get(`/auth/user/${maybeId}/public-key`);
+              publicKeyJwk = res.data || null;
+            } catch {
+              publicKeyJwk = null;
+            }
           }
         }
-      } catch {
-        console.warn("Failed to import private key, regenerating new one");
+      } catch (err) {
+        console.warn("Failed to import private key, regenerating new one", err);
       }
-    }
 
-    if (!keyPair) {
-      const gen = await generateECDHKeyPair();
-      keyPair = gen.keyPair;
-      publicKeyJwk = gen.publicKeyJwk;
-      const privJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
-      localStorage.setItem(`privkey_${authUser._id}`, JSON.stringify(privJwk));
-      localStorage.setItem(`pubkey_${authUser._id}`, JSON.stringify(publicKeyJwk));
-      try {
-        await axiosInstance.post("/auth/upload-public-key", { publicKeyJwk });
-      } catch (e) {
-        console.warn("Failed to upload public key:", e?.message || e);
-      }
-    }
-
-    set({ keyPair, publicKeyJwk, cryptoInitialized: true });
-
-    const socket = useStore.getState().socket;
-    if (socket) {
-      socket.off("receive-public-key");
-      socket.on("receive-public-key", async ({ from, publicKey }) => {
+      if (!keyPair) {
+        const gen = await generateECDHKeyPair();
+        keyPair = gen.keyPair;
+        publicKeyJwk = gen.publicKeyJwk;
         try {
-          const imported = await importPublicKey(publicKey);
-          const aesKey = await deriveAESKey(get().keyPair.privateKey, imported);
-          set((s) => ({ aesKeys: { ...s.aesKeys, [from]: aesKey } }));
-          const ourPub = get().publicKeyJwk;
-          if (ourPub) socket.emit("send-public-key", { to: from, publicKey: ourPub });
-        } catch (err) {
-          console.warn("Error handling receive-public-key:", err);
+          const privJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+          const id = (authUser && (authUser._id || authUser.id)) || "unknown";
+          localStorage.setItem(`privkey_${id}`, JSON.stringify(privJwk));
+          localStorage.setItem(`pubkey_${id}`, JSON.stringify(publicKeyJwk));
+          try {
+            await axiosInstance.post("/auth/upload-public-key", { publicKeyJwk });
+          } catch (e) {
+            console.warn("Failed to upload public key:", e?.message || e);
+          }
+        } catch (e) {
+          console.warn("Failed to export private key JWK (continuing without persistence):", e);
         }
-      });
-    }
-  },
+      }
 
-  /* getUsers */
-  getUsers: async () => {
-    set({ isUsersLoading: true });
-    try {
-      const res = await axiosInstance.get("/message/users");
-      set({ users: res.data });
-    } catch (e) {
-      toast.error(e.response?.data?.message || e.message);
-    } finally {
-      set({ isUsersLoading: false });
-    }
-  },
+      set({ keyPair, publicKeyJwk, cryptoInitialized: true });
 
-  /* getMessages */
-  getMessages: async (userId) => {
-    try {
-      set({ isMessagesLoading: true });
-      await get().initCrypto();
+      const socket = useStore.getState().socket;
+      if (socket) {
+        socket.off("receive-public-key");
+        socket.on("receive-public-key", async ({ from, publicKey }) => {
+          try {
+            const imported = await importPublicKey(publicKey);
+            const aesKey = await deriveAESKey(get().keyPair.privateKey, imported);
+            set((s) => ({ aesKeys: { ...s.aesKeys, [from]: aesKey } }));
 
-      const res = await axiosInstance.get(`/message/${userId}`);
-      const msgs = res.data || [];
-
-      const key = await waitForAESKey(userId, 5000, { tryOfflineDerive: true });
-      if (!key) {
-        set({
-          messages: msgs.map(msg => ({ ...msg, text: "🔒 Encrypted Message" })),
-          isMessagesLoading: false
+            // send our public key back (helps the peer derive)
+            const ourPub = get().publicKeyJwk;
+            if (ourPub) socket.emit("send-public-key", { to: from, publicKey: ourPub });
+          } catch (err) {
+            console.warn("Error handling receive-public-key:", err);
+          }
         });
+      }
+    },
+
+    /* getUsers */
+    getUsers: async () => {
+      set({ isUsersLoading: true });
+      try {
+        const res = await axiosInstance.get("/message/users");
+        set({ users: res.data });
+      } catch (e) {
+        toast.error(e.response?.data?.message || e.message);
+      } finally {
+        set({ isUsersLoading: false });
+      }
+    },
+
+    /* getMessages */
+    getMessages: async (userId) => {
+      try {
+        set({ isMessagesLoading: true });
+        await get().initCrypto();
+
+        const res = await axiosInstance.get(`/message/${userId}`);
+        const msgs = res.data || [];
+
+        const key = await waitForAESKey(userId, 5000, { tryOfflineDerive: true });
+        if (!key) {
+          // store locked placeholders into bucket
+          set((state) => {
+            const locked = msgs.map((m) => ({ ...m, text: "🔒 Encrypted Message" }));
+            const newMap = { ...(state.messagesByUser || {}), [userId]: locked };
+            const shouldSetMessages = state.selectedUser && String(state.selectedUser._id) === String(userId);
+            return {
+              messagesByUser: newMap,
+              messages: shouldSetMessages ? locked : state.messages,
+              isMessagesLoading: false,
+            };
+          });
+          return;
+        }
+
+        set((s) => ({ aesKeys: { ...s.aesKeys, [userId]: key } }));
+
+        const processed = await Promise.all(
+          msgs.map(async (msg) => {
+            if (msg.encrypted?.iv) {
+              try {
+                const pt = await decryptMessage(msg.encrypted, key);
+                return { ...msg, text: pt };
+              } catch {
+                return { ...msg, text: "🔒 Encrypted Message" };
+              }
+            }
+            return { ...msg, text: msg.text || "" };
+          })
+        );
+
+        set((state) => {
+          const newMap = { ...(state.messagesByUser || {}), [userId]: processed };
+          const shouldSetMessages = state.selectedUser && String(state.selectedUser._id) === String(userId);
+          return {
+            messagesByUser: newMap,
+            messages: shouldSetMessages ? processed : state.messages,
+            isMessagesLoading: false,
+          };
+        });
+      } catch (e) {
+        console.error("Error in getMessages:", e);
+        set({ isMessagesLoading: false });
+      }
+    },
+
+    /* setSelectedUser */
+    setSelectedUser: async (user) => {
+      const cached = get().messagesByUser?.[user._id] || [];
+      set({ selectedUser: user, messages: cached, isMessagesLoading: true });
+      await get().initCrypto();
+      const { publicKeyJwk, aesKeys } = get();
+      const socket = useStore.getState().socket;
+
+      if (publicKeyJwk && socket && !aesKeys[user._id]) {
+        socket.emit("send-public-key", { to: user._id, publicKey: publicKeyJwk });
+      }
+
+      await get().getMessages(user._id);
+    },
+
+    /* sendMessage */
+    sendMessage: async (text) => {
+      const { selectedUser } = get();
+      if (!selectedUser) return;
+
+      const key = await waitForAESKey(selectedUser._id, 3000, { tryOfflineDerive: true });
+      if (!key) {
+        toast.error("Encryption key not ready!");
         return;
       }
 
-      set((s) => ({ aesKeys: { ...s.aesKeys, [userId]: key } }));
-
-      const processed = await Promise.all(
-        msgs.map(async (msg) => {
-          if (msg.encrypted?.iv) {
-            try {
-              const pt = await decryptMessage(msg.encrypted, key);
-              return { ...msg, text: pt };
-            } catch {
-              return { ...msg, text: "🔒 Encrypted Message" };
-            }
-          }
-          return { ...msg, text: msg.text || "" };
-        })
-      );
-
-      set({ messages: processed, isMessagesLoading: false });
-    } catch (e) {
-      console.error("Error in getMessages:", e);
-      set({ isMessagesLoading: false });
-    }
-  },
-
-
-  /* setSelectedUser */
-  setSelectedUser: async (user) => {
-    set({ selectedUser: user, messages: [], isMessagesLoading: true });
-    await get().initCrypto();
-    const { publicKeyJwk, aesKeys } = get();
-    const socket = useStore.getState().socket;
-
-    if (publicKeyJwk && socket && !aesKeys[user._id]) {
-      socket.emit("send-public-key", { to: user._id, publicKey: publicKeyJwk });
-    }
-
-    await get().getMessages(user._id);
-  },
-
-  /* sendMessage */
-  sendMessage: async (text) => {
-    const { selectedUser } = get();
-    if (!selectedUser) return;
-
-    const key = await waitForAESKey(selectedUser._id, 3000, { tryOfflineDerive: true });
-    if (!key) {
-      toast.error("Encryption key not ready!");
-      return;
-    }
-
-    try {
-      const encrypted = await encryptMessage(text, key);
-      const pubJwk = get().publicKeyJwk;
-      const res = await axiosInstance.post(`/message/send/${selectedUser._id}`, {
-        encrypted,
-        senderPublicKeyJwk: pubJwk,
-      });
-
-      const decryptedText = await decryptMessage(res.data.encrypted, key);
-      set({ messages: [...get().messages, { ...res.data, text: decryptedText }] });
-    } catch (e) {
-      console.error("[sendMessage] error:", e);
-      toast.error(e.response?.data?.message || e.message || "Send failed");
-    }
-  },
-
-  /* subscribeToMessages */
-  subscribeToMessages: () => {
-    const socket = useStore.getState().socket;
-    if (!socket) return;
-
-    socket.off("newMessage");
-    socket.on("newMessage", async ({ from, msg }) => {
       try {
-        const authUser = useStore.getState().authUser;
-        // Ignore echoes of messages sent by *this* client (prevents overwrite/race)
-        if (authUser && String(from) === String(authUser._id)) {
-          // optionally: you could still merge some non-text fields here if needed
-          return;
-        }
+        const encrypted = await encryptMessage(text, key);
+        const pubJwk = get().publicKeyJwk;
+        const res = await axiosInstance.post(`/message/send/${selectedUser._id}`, {
+          encrypted,
+          senderPublicKeyJwk: pubJwk,
+        });
 
-        // normal incoming-message flow for messages from other users
-        const curMsgs = get().messages || [];
-        const incomingId = normalizeId(msg);
-        const existsIndex = curMsgs.findIndex((m) => normalizeId(m) === incomingId);
-
-        if (existsIndex !== -1) {
-          // existing message from other user — try to update text only if decrypt succeeds
-          const oldMsg = curMsgs[existsIndex];
-          let updated = [...curMsgs];
-
-          try {
-            const liveKey = await waitForAESKey(from, 300, { tryOfflineDerive: false });
-            if (liveKey && msg.encrypted?.iv) {
-              const text = await decryptMessage(msg.encrypted, liveKey);
-              updated[existsIndex] = { ...oldMsg, ...msg, text };
-              set({ messages: updated });
-            }
-            // if decrypt failed: keep existing text (do not downgrade)
-          } catch (e) {
-            console.warn("Decrypt failed while updating existing incoming message:", e);
-          }
-          return;
-        }
-
-        // brand new message from another user
+        // Decrypt server-saved payload and upsert into bucket
+        let decryptedText = "🔒 Encrypted Message";
         try {
-          const liveKey = await waitForAESKey(from, 300, { tryOfflineDerive: false });
-          if (liveKey && msg.encrypted?.iv) {
-            const text = await decryptMessage(msg.encrypted, liveKey);
-            set({ messages: [...curMsgs, { ...msg, text }] });
+          decryptedText = await decryptMessage(res.data.encrypted, key);
+        } catch (e) {
+          console.warn("[sendMessage] decrypt after save failed:", e);
+        }
+        const msgWithText = { ...res.data, text: decryptedText };
+
+        // Upsert safely (prevents duplicate when server echo arrives)
+        const userId = String(selectedUser._id);
+        upsertMessageForUser(userId, msgWithText);
+
+        // Update UI messages if this conversation is open
+        const selected = get().selectedUser;
+        if (selected && String(selected._id) === userId) {
+          const updatedBucket = get().messagesByUser?.[userId] || [];
+          set({ messages: updatedBucket });
+        }
+      } catch (e) {
+        console.error("[sendMessage] error:", e);
+        toast.error(e.response?.data?.message || e.message || "Send failed");
+      }
+    },
+
+    /* subscribeToMessages */
+    subscribeToMessages: () => {
+      const socket = useStore.getState().socket;
+      if (!socket) return;
+
+      socket.off("newMessage");
+      socket.on("newMessage", async ({ from, msg }) => {
+        try {
+          const authUser = useStore.getState().authUser;
+          const senderId = String(from);
+          const isEcho = authUser && String(from) === String(authUser._id);
+          const receiverId = msg?.receiverId ? String(msg.receiverId) : null;
+
+          const targetUserId = isEcho ? (receiverId || String(get().selectedUser?._id || "")) : senderId;
+          if (!targetUserId) {
+            console.warn("[subscribeToMessages] can't determine conversation target for incoming msg", msg);
             return;
           }
-        } catch (e) {
-          console.warn("Live decrypt failed for new incoming message:", e);
+
+          const decryptPartnerId = isEcho ? targetUserId : senderId;
+
+          let text = "🔒 Encrypted Message";
+          try {
+            const key = await waitForAESKey(decryptPartnerId, 300, { tryOfflineDerive: false });
+            if (key && msg.encrypted?.iv) {
+              text = await decryptMessage(msg.encrypted, key);
+            } else if (!msg.encrypted?.iv && msg.text) {
+              text = msg.text;
+            }
+          } catch (e) {
+            console.warn("[subscribeToMessages] live decrypt failed:", e);
+          }
+
+          const msgWithText = { ...msg, text };
+
+          // Upsert into messagesByUser safely (dedupe + no downgrade)
+          upsertMessageForUser(String(targetUserId), msgWithText);
+
+          // If this conversation is open, refresh UI messages from bucket
+          const selected = get().selectedUser;
+          if (selected && String(selected._id) === String(targetUserId)) {
+            const updatedBucket = get().messagesByUser?.[targetUserId] || [];
+            set({ messages: updatedBucket });
+          }
+        } catch (outer) {
+          console.error("subscribeToMessages handler error:", outer);
         }
+      });
+    },
 
-        // fallback: append locked placeholder
-        set({ messages: [...curMsgs, { ...msg, text: "🔒 Encrypted Message" }] });
-      } catch (outer) {
-        console.error("subscribeToMessages handler error:", outer);
-      }
-    });
-  },
-
-  unsubscribeFromMessages: () => {
-    const socket = useStore.getState().socket;
-    if (socket) socket.off("newMessage");
-  },
-}));
+    unsubscribeFromMessages: () => {
+      const socket = useStore.getState().socket;
+      if (socket) socket.off("newMessage");
+    },
+  };
+});
 
 /* ---------------- waitForAESKey ---------------- */
 async function waitForAESKey(userId, timeoutMs = 2000, options = { tryOfflineDerive: true }) {

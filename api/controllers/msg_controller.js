@@ -1,26 +1,23 @@
-// server/controllers/msg_controller.js
 import User from "../models/user.js";
 import Message from "../models/message.js";
 
 import { getReceiverSocketId, io } from "../library/socket.js";
 
-/**
- * List sidebar users (all except current)
- */
+// this is for sidebar
 export const SidebarUsers = async (req, res) => {
   try {
     const UserId = req.user._id;
     const DisplayUsers = await User.find({ _id: { $ne: UserId } }).select("-password");
+
     res.status(200).json(DisplayUsers);
+
   } catch (error) {
     console.error("Error in SidebarUsers = ", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-/**
- * Get conversation messages between current user and :id
- */
+// for showing messages
 export const getMessages = async (req, res) => {
   try {
     const { id: userToChatId } = req.params;
@@ -31,9 +28,10 @@ export const getMessages = async (req, res) => {
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
-    }).sort({ createdAt: 1 });
+    }).sort({ createdAt: 1 }); // sorted from oldest to latest
 
     res.status(200).json(messages);
+
   } catch (error) {
     console.error("Error in getMessages controller = ", error);
     res.status(500).json({ error: "Internal server error" });
@@ -57,42 +55,43 @@ export const sendMessage = async (req, res) => {
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
-    // ----------------- normalize/parse senderPublicKeyJwk -----------------
-    if (typeof senderPublicKeyJwk === "string") {
+    // senderPublicKeyJwk normalization or parsing 
+    if(typeof senderPublicKeyJwk === "string") {
       try {
         senderPublicKeyJwk = JSON.parse(senderPublicKeyJwk);
-      } catch (e) {
-        // if it's a plain string (not JSON), we'll fallback to user's stored key below
+      } catch(e) {
+        // if it's a plain string and not JSON
         senderPublicKeyJwk = null;
       }
     }
 
-    if (!senderPublicKeyJwk) {
-      // try user's stored public key in DB if client didn't send a valid one
+    // using stored public key in DB if client didn't send a valid one
+    if(!senderPublicKeyJwk) {
       const me = await User.findById(senderId).select("publicKeyJwk");
       senderPublicKeyJwk = me?.publicKeyJwk || null;
     }
 
-    // Validate senderPublicKeyJwk shape (must be object and not contain private material)
-    if (!senderPublicKeyJwk || typeof senderPublicKeyJwk !== "object") {
+    // senderPublicKeyJwk must be object
+    if(!senderPublicKeyJwk || typeof senderPublicKeyJwk !== "object") {
       return res.status(400).json({ error: "Missing or invalid senderPublicKeyJwk" });
     }
 
-    // Defensive: strip private key fields (e.g. 'd' for EC/RSA private exponent)
-    if (Object.prototype.hasOwnProperty.call(senderPublicKeyJwk, "d")) {
+    // removing private key fields if accidently present
+    if(Object.prototype.hasOwnProperty.call(senderPublicKeyJwk, "d")) {
       delete senderPublicKeyJwk.d;
     }
-    if (Object.prototype.hasOwnProperty.call(senderPublicKeyJwk, "privateKey")) {
+    if(Object.prototype.hasOwnProperty.call(senderPublicKeyJwk, "privateKey")) {
       delete senderPublicKeyJwk.privateKey;
     }
 
-    // Basic shape check for JWK: require 'kty' and either 'x' (EC), or 'n' (RSA) or 'crv'
-    if (!senderPublicKeyJwk.kty || !(senderPublicKeyJwk.x || senderPublicKeyJwk.n || senderPublicKeyJwk.crv)) {
+    // requirement for jwk
+    if(!senderPublicKeyJwk.kty || !(senderPublicKeyJwk.x || senderPublicKeyJwk.n || senderPublicKeyJwk.crv)) {
       return res.status(400).json({ error: "senderPublicKeyJwk doesn't look like a valid public JWK" });
     }
 
-    // ----------------- Validate encrypted payload -----------------
-    if (!encrypted || (typeof encrypted !== "object")) {
+
+
+    if(!encrypted || (typeof encrypted !== "object")) {
       return res.status(400).json({ error: "Encrypted payload is missing or invalid." });
     }
 

@@ -1,21 +1,17 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useChatStore } from "../store/useChatStore.js";
 import ChatHeader from "./ChatHeader.jsx";
 import MessageInput from "./MessageInput.jsx";
 import { useStore } from "../store/store.js";
 
 export default function ChatContainer() {
-  const {
-    messages,
-    isMessagesLoading,
-    selectedUser,
-  } = useChatStore();
+  const { messages, isMessagesLoading } = useChatStore();
 
   const { authUser } = useStore();
   const messageEndRef = useRef(null);
 
   useEffect(() => {
-    if (messages && messageEndRef.current) {
+    if(messages && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
@@ -30,7 +26,7 @@ export default function ChatContainer() {
     });
   };
 
-  if (isMessagesLoading) {
+  if(isMessagesLoading) {
     return (
       <div className="flex-1 flex flex-col overflow-auto">
         <ChatHeader />
@@ -54,7 +50,7 @@ export default function ChatContainer() {
               className={`chat ${isOwnMessage ? "chat-end" : "chat-start"}`}
               ref={messageEndRef}
             >
-              {/* Message bubble */}
+              {/* message container */}
               <div className="chat-bubble flex flex-col text-white">
                 <p>{message.text}</p>
                 <span
