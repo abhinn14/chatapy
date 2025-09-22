@@ -5,8 +5,9 @@ import { io } from "socket.io-client";
 import { axiosInstance } from "../library/axios.js";
 import { useChatStore } from "./useChatStore.js";
 
-// this is for websocket only. For rest = it's in axios.js
+// this is for websocket only, for rest = it's in axios.js
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5000": "/";
+
 
 export const useStore = create((set,get) => ({
     authUser: null,

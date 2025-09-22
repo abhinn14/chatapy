@@ -1,5 +1,4 @@
-// client/src/comps/ChatHeader.jsx  (modified)
-import React, { useState } from "react";
+import { useState } from "react";
 import { useStore } from "../store/store.js";
 import { useChatStore } from "../store/useChatStore.js";
 import SketchBoard from "./SketchBoard.jsx";
@@ -11,7 +10,7 @@ export default function ChatHeader() {
   const { onlineUsers } = useStore();
   const [openSketch, setOpenSketch] = useState(false);
 
-  if (!selectedUser) return null;
+  if(!selectedUser) return null;
   const isOnline = onlineUsers.includes(selectedUser._id);
 
   return (
@@ -36,7 +35,7 @@ export default function ChatHeader() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Sketch button placed at the rightmost position of the header */}
+          {/* Sketch button*/}
           <button
             onClick={() => setOpenSketch(true)}
             className="btn btn-sm btn-outline"

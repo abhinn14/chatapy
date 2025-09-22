@@ -1,5 +1,4 @@
-// client/src/comps/SketchBoard.jsx
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store/store.js";
 import { useChatStore } from "../store/useChatStore.js";
 import { X, Paintbrush, Eraser as EraserIcon } from "lucide-react";
@@ -17,9 +16,8 @@ export default function SketchBoard({ onClose }) {
   const [color, setColor] = useState("#000000");
   const [width, setWidth] = useState(4);
   const [strokes, setStrokes] = useState([]); // local draw cache
-  const [tool, setTool] = useState("pen"); // "pen" or "eraser"
+  const [tool, setTool] = useState("pen"); // pen or eraser
 
-  // quick palette
   const COLORS = [
     "#000000",
     "#FF3B30",
@@ -38,7 +36,7 @@ export default function SketchBoard({ onClose }) {
     if (!socket || !peerId) return;
     socket.emit("join-sketch", { peerId });
 
-    socket.on("sketch-init", ({ strokes: s }) => {
+    socket.on("sketch-init", ({strokes:s}) => {
       setStrokes(s || []);
       setTimeout(() => redrawCanvas(s || []), 0);
     });
@@ -51,7 +49,7 @@ export default function SketchBoard({ onClose }) {
       });
     });
 
-    // listen for any clear (immediate erase)
+    // listening for any clear
     socket.on("sketch-cleared", () => {
       setStrokes([]);
       clearCanvasDisplay();
@@ -161,10 +159,10 @@ export default function SketchBoard({ onClose }) {
   }
 
   function onPointerUp(e) {
-    if (!drawing.current) return;
+    if(!drawing.current) return;
     drawing.current = false;
     const lastStroke = strokeRef.current;
-    if (lastStroke && socket && peerId) {
+    if(lastStroke && socket && peerId) {
       socket.emit("sketch-stroke", { peerId, stroke: lastStroke });
     }
     strokeRef.current = null;
@@ -178,11 +176,10 @@ export default function SketchBoard({ onClose }) {
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
-  // NEW: immediate clear
+  // immediate clear
   function doClear() {
-    if (!socket || !peerId) return;
+    if(!socket || !peerId) return;
     socket.emit("sketch-clear", { peerId });
-    // optimistically clear local canvas as well (server will also emit)
     setStrokes([]);
     clearCanvasDisplay();
   }
