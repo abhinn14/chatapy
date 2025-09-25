@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+
 const app = express();
 const server = http.createServer(app);
 
@@ -14,14 +15,7 @@ const io = new Server(server, {
 // userId -> socketId
 const userSocketMap = {};
 
-
-/**
- * sketchStateMap[roomId] = {
- *   strokes: [ { id, from, path: [ {x,y}...], color, width, type?, timestamp } ],
- *   crossedBy: Set of userIds who "crossed" (JS Set)
- * }
- */
-// roomId -> {strokes,crossedBy}
+// roomId -> { strokes: [] }
 const sketchStateMap = {};
 
 function getRoomId(a, b) {
@@ -37,16 +31,16 @@ export function getReceiverSocketId(userId) {
 io.on("connection", (socket) => {
   console.log("A user connected", socket.id);
 
-  // NOTE: you can replace this with proper auth extraction if you use JWT/cookies
+  // naive auth: grab userId from query
   const userId = socket.handshake.query?.userId;
   if (userId) {
     userSocketMap[String(userId)] = socket.id;
   }
 
-  // Broadcast current online users
+  // Broadcast online users
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-  // Relay public keys (existing behaviour)
+  // Relay public keys (still used for E2EE)
   socket.on("send-public-key", ({ to, publicKey }) => {
     const targetSocketId = getReceiverSocketId(to);
     if (targetSocketId) {
@@ -57,21 +51,18 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ---------- Sketchboard handlers ----------
+  // ---------- Sketchboard ----------
   socket.on("join-sketch", ({ peerId }) => {
     if (!userId || !peerId) return;
     const roomId = getRoomId(userId, peerId);
     socket.join(roomId);
 
     if (!sketchStateMap[roomId]) {
-      sketchStateMap[roomId] = { strokes: [], crossedBy: new Set() };
+      sketchStateMap[roomId] = { strokes: [] };
     }
 
-    const { strokes, crossedBy } = sketchStateMap[roomId];
-    io.to(socket.id).emit("sketch-init", {
-      strokes,
-      crossedBy: Array.from(crossedBy),
-    });
+    const { strokes } = sketchStateMap[roomId];
+    io.to(socket.id).emit("sketch-init", { strokes });
   });
 
   socket.on("leave-sketch", ({ peerId }) => {
@@ -79,7 +70,7 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(userId, peerId);
     socket.leave(roomId);
 
-    // If room is now empty, delete its sketch state so nothing persists
+    // cleanup if room is empty
     try {
       const room = io.sockets.adapter.rooms.get(roomId);
       if (!room || room.size === 0) {
@@ -94,7 +85,7 @@ io.on("connection", (socket) => {
     try {
       if (!userId || !peerId || !stroke) return;
       const roomId = getRoomId(userId, peerId);
-      if (!sketchStateMap[roomId]) sketchStateMap[roomId] = { strokes: [], crossedBy: new Set() };
+      if (!sketchStateMap[roomId]) sketchStateMap[roomId] = { strokes: [] };
 
       const payload = {
         ...stroke,
@@ -104,70 +95,34 @@ io.on("connection", (socket) => {
 
       sketchStateMap[roomId].strokes.push(payload);
 
-      // broadcast to everyone in room except sender
+      // broadcast to everyone except sender
       socket.to(roomId).emit("sketch-stroke", payload);
     } catch (e) {
       console.warn("sketch-stroke error", e);
     }
   });
 
-  // immediate clear: any participant can call this to wipe the room's strokes right away
   socket.on("sketch-clear", ({ peerId }) => {
     try {
       if (!userId || !peerId) return;
       const roomId = getRoomId(userId, peerId);
       if (!roomId) return;
       if (!sketchStateMap[roomId]) {
-        sketchStateMap[roomId] = { strokes: [], crossedBy: new Set() };
+        sketchStateMap[roomId] = { strokes: [] };
       } else {
         sketchStateMap[roomId].strokes = [];
-        sketchStateMap[roomId].crossedBy = new Set();
       }
-      // notify everyone in the room to clear
       io.to(roomId).emit("sketch-cleared");
     } catch (err) {
       console.warn("sketch-clear error", err);
     }
   });
 
-  // toggle cross (legacy/optional behaviour kept for compatibility)
-  socket.on("sketch-toggle-cross", async ({ peerId }) => {
-    try {
-      if (!userId || !peerId) return;
-      const roomId = getRoomId(userId, peerId);
-      if (!sketchStateMap[roomId]) sketchStateMap[roomId] = { strokes: [], crossedBy: new Set() };
-      const state = sketchStateMap[roomId];
-      const crossedBy = state.crossedBy;
-
-      if (crossedBy.has(String(userId))) {
-        // user is un-crossing
-        crossedBy.delete(String(userId));
-        if (crossedBy.size === 0) {
-          io.to(roomId).emit("sketch-uncross");
-        } else {
-          io.to(roomId).emit("sketch-crossed", { crossedBy: Array.from(crossedBy) });
-        }
-      } else {
-        // user is crossing
-        crossedBy.add(String(userId));
-        if (crossedBy.size === 1) {
-          io.to(roomId).emit("sketch-crossed", { crossedBy: Array.from(crossedBy) });
-        } else if (crossedBy.size >= 2) {
-          // both crossed -> permanently clear strokes + reset crossedBy
-          state.strokes = [];
-          state.crossedBy = new Set();
-          io.to(roomId).emit("sketch-cleared");
-        }
-      }
-    } catch (e) {
-      console.warn("sketch-toggle-cross error", e);
-    }
-  });
-
-  // cleanup on disconnect
+  // ---------- Disconnect ----------
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
-    // remove mapping(s) that referenced this socket.id
+
+    // cleanup user socket map
     for (const [uid, sid] of Object.entries(userSocketMap)) {
       if (sid === socket.id) {
         delete userSocketMap[uid];
@@ -175,10 +130,9 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Broadcast updated online users
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-    // Clean up any sketch rooms that are now empty
+    // cleanup empty rooms
     try {
       for (const roomId of Object.keys(sketchStateMap)) {
         const room = io.sockets.adapter.rooms.get(roomId);

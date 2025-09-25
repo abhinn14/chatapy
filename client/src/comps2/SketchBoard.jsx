@@ -32,11 +32,12 @@ export default function SketchBoard({ onClose }) {
 
   const peerId = selectedUser?._id;
 
+  // Socket listeners
   useEffect(() => {
     if (!socket || !peerId) return;
     socket.emit("join-sketch", { peerId });
 
-    socket.on("sketch-init", ({strokes:s}) => {
+    socket.on("sketch-init", ({ strokes: s }) => {
       setStrokes(s || []);
       setTimeout(() => redrawCanvas(s || []), 0);
     });
@@ -49,7 +50,6 @@ export default function SketchBoard({ onClose }) {
       });
     });
 
-    // listening for any clear
     socket.on("sketch-cleared", () => {
       setStrokes([]);
       clearCanvasDisplay();
@@ -63,6 +63,7 @@ export default function SketchBoard({ onClose }) {
     };
   }, [socket, peerId]); // eslint-disable-line
 
+  // Canvas setup & resize handling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -88,6 +89,7 @@ export default function SketchBoard({ onClose }) {
     // eslint-disable-next-line
   }, []);
 
+  // Clear only local canvas
   function clearCanvasDisplay() {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -95,6 +97,7 @@ export default function SketchBoard({ onClose }) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  // Redraw all strokes
   function redrawCanvas(strokesToDraw) {
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -102,6 +105,7 @@ export default function SketchBoard({ onClose }) {
     for (const s of strokesToDraw) drawStrokeOnCtx(ctx, s);
   }
 
+  // Draw a single stroke or segment
   function drawStrokeOnCtx(ctx, stroke) {
     if (!ctx || !stroke?.path?.length) return;
     ctx.save();
@@ -125,6 +129,7 @@ export default function SketchBoard({ onClose }) {
     ctx.restore();
   }
 
+  // Input handlers
   function onPointerDown(e) {
     e.preventDefault?.();
     drawing.current = true;
@@ -152,17 +157,20 @@ export default function SketchBoard({ onClose }) {
     if (len >= 2) {
       const lastSegment = {
         ...strokeRef.current,
-        path: [strokeRef.current.path[len - 2], strokeRef.current.path[len - 1]],
+        path: [
+          strokeRef.current.path[len - 2],
+          strokeRef.current.path[len - 1],
+        ],
       };
       drawStrokeOnCtx(ctxRef.current, lastSegment);
     }
   }
 
   function onPointerUp(e) {
-    if(!drawing.current) return;
+    if (!drawing.current) return;
     drawing.current = false;
     const lastStroke = strokeRef.current;
-    if(lastStroke && socket && peerId) {
+    if (lastStroke && socket && peerId) {
       socket.emit("sketch-stroke", { peerId, stroke: lastStroke });
     }
     strokeRef.current = null;
@@ -171,14 +179,16 @@ export default function SketchBoard({ onClose }) {
   function getPointerPos(e) {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY;
+    const clientX =
+      e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+    const clientY =
+      e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY;
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
-  // immediate clear
+  // Clear for everyone
   function doClear() {
-    if(!socket || !peerId) return;
+    if (!socket || !peerId) return;
     socket.emit("sketch-clear", { peerId });
     setStrokes([]);
     clearCanvasDisplay();
@@ -195,16 +205,21 @@ export default function SketchBoard({ onClose }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Tool buttons */}
             <div className="flex items-center gap-1 mr-2">
               <button
-                className={`btn btn-xs ${tool === "pen" ? "btn-primary" : "btn-ghost"}`}
+                className={`btn btn-xs ${
+                  tool === "pen" ? "btn-primary" : "btn-ghost"
+                }`}
                 onClick={() => setTool("pen")}
                 title="Pen"
               >
                 Pen
               </button>
               <button
-                className={`btn btn-xs ${tool === "eraser" ? "btn-primary" : "btn-ghost"} ml-1`}
+                className={`btn btn-xs ${
+                  tool === "eraser" ? "btn-primary" : "btn-ghost"
+                } ml-1`}
                 onClick={() => setTool("eraser")}
                 title="Eraser"
               >
@@ -212,6 +227,7 @@ export default function SketchBoard({ onClose }) {
               </button>
             </div>
 
+            {/* Color palette */}
             <div className="flex items-center gap-1 mr-3">
               {COLORS.map((c) => (
                 <button
@@ -225,14 +241,20 @@ export default function SketchBoard({ onClose }) {
                     height: 22,
                     borderRadius: 6,
                     background: c,
-                    border: c === "#FFFFFF" ? "1px solid #ccc" : "1px solid rgba(0,0,0,0.12)",
+                    border:
+                      c === "#FFFFFF"
+                        ? "1px solid #ccc"
+                        : "1px solid rgba(0,0,0,0.12)",
                   }}
-                  className={`inline-block ${c === color ? "ring-2 ring-offset-1" : ""}`}
+                  className={`inline-block ${
+                    c === color ? "ring-2 ring-offset-1" : ""
+                  }`}
                   title={c}
                 />
               ))}
             </div>
 
+            {/* Stroke width */}
             <input
               type="range"
               min={1}
@@ -242,16 +264,17 @@ export default function SketchBoard({ onClose }) {
               title="Stroke width"
             />
 
+            {/* Clear + Close */}
             <button onClick={doClear} className="btn btn-sm btn-error">
               Clear
             </button>
-
             <button onClick={onClose} className="btn btn-ghost btn-sm">
               <X />
             </button>
           </div>
         </div>
 
+        {/* Canvas */}
         <div className="flex-1 border rounded overflow-hidden relative">
           <canvas
             ref={canvasRef}

@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { axiosInstance } from "../library/axios.js";
 import { useStore } from "./store.js";
 
+// Binary to string
 function u8ToBase64(u8) {
   let binary = "";
   for(let i=0; i<u8.length; i++)
@@ -10,6 +11,7 @@ function u8ToBase64(u8) {
   return btoa(binary);
 }
 
+// String to binary
 function base64ToU8(b64) {
   const binary = atob(b64);
   const len = binary.length;
@@ -91,13 +93,13 @@ export const useChatStore = create((set, get) => {
     for(let i=0; i<list.length; i++) {
       const m = list[i];
       const mid = normalizeId(m);
-      if (mid && incomingId && String(mid) === String(incomingId)) return i;
+      if(mid && incomingId && String(mid) === String(incomingId)) return i;
 
       const mct = normalizeEncryptedFingerprint(m.encrypted);
-      if (mct && incomingCt && mct === incomingCt) return i;
+      if(mct && incomingCt && mct === incomingCt) return i;
 
       const mcreated = m.createdAt ? String(m.createdAt) : null;
-      if (mcreated && incomingCreated && mcreated === incomingCreated) return i;
+      if(mcreated && incomingCreated && mcreated === incomingCreated) return i;
     }
     return -1;
   }
@@ -169,6 +171,7 @@ export const useChatStore = create((set, get) => {
         const maybeId = authUser._id;
         const privKeyStorage = localStorage.getItem(`privkey_${maybeId}`);
 
+        // resusing alrady generated priv key
         if(privKeyStorage) {
           const privJwk = JSON.parse(privKeyStorage);
           const privateKey = await crypto.subtle.importKey(
@@ -197,6 +200,7 @@ export const useChatStore = create((set, get) => {
         console.warn("Failed to import private key, regenerating new one", err);
       }
 
+      // if keys aren't made, generate them!!!
       if(!keyPair) {
         const gen = await generateECDHKeyPair();
         keyPair = gen.keyPair;
@@ -383,7 +387,7 @@ export const useChatStore = create((set, get) => {
       const socket = useStore.getState().socket;
       if(!socket) return;
 
-      // removing orevious listeners
+      // removing previous listeners
       socket.off("newMessage");
 
       socket.on("newMessage", async ({from, msg}) => {
