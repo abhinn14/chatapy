@@ -340,40 +340,40 @@ export const useChatStore = create((set, get) => {
       await get().getMessages(user._id);
     },
 
-    sendMessage: async (text) => {
+    sendMessage: async (content, type = "text") => {
       const { selectedUser } = get();
-      if(!selectedUser) return;
-
+      if (!selectedUser) return;
+        
       const key = await waitForAESKey(selectedUser._id, 3000, { tryOfflineDerive: true });
-      if(!key) {
+      if (!key) {
         toast.error("Encryption key not ready!");
         return;
       }
-
+    
       try {
-        const encrypted = await encryptMessage(text, key);
+        const encrypted = await encryptMessage(content, key);
         const pubJwk = get().publicKeyJwk;
+      
         const res = await axiosInstance.post(`/message/send/${selectedUser._id}`, {
           encrypted,
           senderPublicKeyJwk: pubJwk,
+          type,
         });
-
-        // Decrypt server-saved payload
+      
+        // decrypt after save
         let decryptedText = "🔒 Encrypted Message";
         try {
           decryptedText = await decryptMessage(res.data.encrypted, key);
         } catch (e) {
           console.warn("[sendMessage] decrypt after save failed:", e);
         }
-        const msgWithText = { ...res.data, text: decryptedText };
-
-        // Upsert safely, it prevents duplicate when server echo arrives
+      
+        const msgWithText = { ...res.data, text: decryptedText, type };
+      
+        // upsert into state
         const userId = String(selectedUser._id);
         upsertMessageForUser(userId, msgWithText);
-
-        // Updates UI messages if this conversation is open
-        const selected = get().selectedUser;
-        if(selected && String(selected._id) === userId) {
+        if (get().selectedUser?._id === userId) {
           const updatedBucket = get().messagesByUser?.[userId] || [];
           set({ messages: updatedBucket });
         }
@@ -382,6 +382,7 @@ export const useChatStore = create((set, get) => {
         toast.error(e.response?.data?.message || e.message || "Send failed");
       }
     },
+
 
     subscribeToMessages: () => {
       const socket = useStore.getState().socket;

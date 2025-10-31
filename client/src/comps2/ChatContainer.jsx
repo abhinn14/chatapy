@@ -3,15 +3,15 @@ import { useChatStore } from "../store/useChatStore.js";
 import ChatHeader from "./ChatHeader.jsx";
 import MessageInput from "./MessageInput.jsx";
 import { useStore } from "../store/store.js";
+import MessageSkeleton from "../skeletons/MessageSkeleton.jsx";
 
 export default function ChatContainer() {
   const { messages, isMessagesLoading } = useChatStore();
-
   const { authUser } = useStore();
   const messageEndRef = useRef(null);
 
   useEffect(() => {
-    if(messages && messageEndRef.current) {
+    if (messages && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
@@ -30,7 +30,7 @@ export default function ChatContainer() {
     return (
       <div className="flex-1 flex flex-col overflow-auto">
         <ChatHeader />
-        <h1>Messages Loading...</h1>
+        <MessageSkeleton />
         <MessageInput />
       </div>
     );
@@ -43,6 +43,7 @@ export default function ChatContainer() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => {
           const isOwnMessage = message.senderId === authUser._id;
+          const isImage = message.type === "image";
 
           return (
             <div
@@ -50,9 +51,22 @@ export default function ChatContainer() {
               className={`chat ${isOwnMessage ? "chat-end" : "chat-start"}`}
               ref={messageEndRef}
             >
-              {/* message container */}
-              <div className="chat-bubble flex flex-col text-white">
-                <p>{message.text}</p>
+              <div
+                className={`chat-bubble flex flex-col ${
+                  isImage ? "p-2 bg-base-300" : "text-white"
+                }`}
+              >
+                {isImage ? (
+                  <img
+                    src={message.text}
+                    alt="Encrypted image"
+                    className="rounded-lg max-w-xs cursor-pointer transition-transform hover:scale-[1.02]"
+                    loading="lazy"
+                  />
+                ) : (
+                  <p className="break-words">{message.text}</p>
+                )}
+
                 <span
                   className={`text-[10px] text-zinc-400 mt-1 self-${
                     isOwnMessage ? "end" : "start"
@@ -64,7 +78,6 @@ export default function ChatContainer() {
             </div>
           );
         })}
-
       </div>
 
       <MessageInput />

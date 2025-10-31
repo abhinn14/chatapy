@@ -51,9 +51,11 @@ export const getMessages = async (req, res) => {
  */
 export const sendMessage = async (req, res) => {
   try {
-    let { encrypted, senderPublicKeyJwk } = req.body;
+    let { encrypted, senderPublicKeyJwk, type } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
+
+    if(!type) type = "text";
 
     // senderPublicKeyJwk normalization or parsing 
     if(typeof senderPublicKeyJwk === "string") {
@@ -151,6 +153,7 @@ export const sendMessage = async (req, res) => {
       receiverId,
       encrypted,
       senderPublicKeyJwk, // persist sanitized public key for recipients to derive later
+      type,
       createdAt: Date.now(),
     });
 

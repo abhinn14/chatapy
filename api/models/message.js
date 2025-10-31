@@ -17,7 +17,11 @@ const msgSchema = new mongoose.Schema(
       ciphertext: { type: String, required: true },
     },
     senderPublicKeyJwk: { type: Object, required: true },
-
+    type: {
+      type: String,
+      enum: ["text", "image"],
+      default: "text",
+    },
   },
   {timestamps:true}
 );

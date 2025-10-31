@@ -18,6 +18,8 @@ export const useStore = create((set,get) => ({
     onlineUsers: [],
     socket: null,
 
+    setAuthUser: (userData) => set({ authUser: userData }),
+
     checkAuth: async () => {
         try {
           const res = await axiosInstance.get("/auth/check");
@@ -112,6 +114,7 @@ export const useStore = create((set,get) => ({
         useChatStore.getState().unsubscribeFromMessages();
         get().socket.disconnect();
       }
-    }
+    },
+
 
 }));

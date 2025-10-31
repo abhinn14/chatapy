@@ -4,13 +4,12 @@ import { useChatStore } from "../store/useChatStore.js";
 import SketchBoard from "./SketchBoard.jsx";
 import { Pencil } from "lucide-react";
 
-
 export default function ChatHeader() {
   const { selectedUser } = useChatStore();
   const { onlineUsers } = useStore();
   const [openSketch, setOpenSketch] = useState(false);
 
-  if(!selectedUser) return null;
+  if (!selectedUser) return null;
   const isOnline = onlineUsers.includes(selectedUser._id);
 
   return (
@@ -20,7 +19,14 @@ export default function ChatHeader() {
           <div className="relative">
             <div className="avatar">
               <div className="size-10 rounded-full relative">
-                <img src={"/avatar.png"} alt={selectedUser.name} />
+                <img
+                  src={
+                    selectedUser.profilePic ||
+                    "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                  }
+                  alt={selectedUser.name}
+                  className="object-cover rounded-full border border-slate-700"
+                />
               </div>
             </div>
             {isOnline && (
@@ -29,13 +35,14 @@ export default function ChatHeader() {
           </div>
 
           <div>
-            <h3 className="font-medium">{selectedUser.name}</h3>
-            <p className="text-sm text-base-content/70">{isOnline ? "Online" : "Offline"}</p>
+            <h3 className="font-medium text-white">{selectedUser.name}</h3>
+            <p className="text-sm text-base-content/70">
+              {isOnline ? "Online" : "Offline"}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Sketch button*/}
           <button
             onClick={() => setOpenSketch(true)}
             className="btn btn-sm btn-outline"
