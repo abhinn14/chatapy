@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChatStore } from "../store/useChatStore.js";
 import { useStore } from "../store/store.js";
-import { Users } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import SidebarSkeleton from "../skeletons/SidebarSkeleton.jsx";
+import useDebounce from "../library/useDebounce.js";
+import { CompressedTrie } from "../library/compressedTrie.js";
 
 const Sidebar = () => {
   const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading } =
@@ -10,25 +12,61 @@ const Sidebar = () => {
 
   const { onlineUsers } = useStore();
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  // ✅ Build the Trie once when users change
+  const trie = useMemo(() => {
+    const t = new CompressedTrie();
+    users.forEach((u) => t.insert(u));
+    return t;
+  }, [users]);
+
+  // ✅ Filter based on search prefix + online toggle
+  const filteredUsers = useMemo(() => {
+    let list = users;
+
+    // Prefix search via Trie
+    if (debouncedSearch.trim()) {
+      list = trie.searchPrefix(debouncedSearch);
+    }
+
+    // Online-only filter
+    if (showOnlineOnly) {
+      list = list.filter((user) => onlineUsers.includes(user._id));
+    }
+
+    return list;
+  }, [debouncedSearch, trie, showOnlineOnly, onlineUsers, users]);
 
   useEffect(() => {
     getUsers();
   }, [getUsers]);
 
-  const filteredUsers = showOnlineOnly
-    ? users.filter((user) => onlineUsers.includes(user._id))
-    : users;
-
-  if(isUsersLoading) return <SidebarSkeleton />;
+  if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
     <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200">
+      {/* Header */}
       <div className="border-b border-base-300 w-full p-5">
         <div className="flex items-center gap-2">
           <Users className="size-6" />
-          <span className="font-medium hidden lg:block">Contacts</span>
+          <span className="font-medium hidden lg:block text-white">Contacts</span>
         </div>
 
+        {/* ✅ Search bar */}
+        <div className="relative mt-3 hidden lg:block">
+          <Search className="absolute left-2 top-2.5 text-zinc-400 size-4" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search users..."
+            className="pl-8 pr-3 py-2 w-full rounded-md bg-slate-700 text-white text-sm outline-none placeholder:text-zinc-400"
+          />
+        </div>
+
+        {/* Online only toggle */}
         <div className="mt-3 hidden lg:flex items-center gap-2">
           <label className="cursor-pointer flex items-center gap-2">
             <input
@@ -45,6 +83,7 @@ const Sidebar = () => {
         </div>
       </div>
 
+      {/* User list */}
       <div className="overflow-y-auto w-full py-3">
         {filteredUsers.map((user) => (
           <button
@@ -80,7 +119,9 @@ const Sidebar = () => {
         ))}
 
         {filteredUsers.length === 0 && (
-          <div className="text-center text-zinc-500 py-4">No online users</div>
+          <div className="text-center text-zinc-500 py-4">
+            No users found
+          </div>
         )}
       </div>
     </aside>
