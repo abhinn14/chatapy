@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+import Message from "../models/message.js"
 
 const app = express();
 const server = http.createServer(app);
@@ -40,6 +41,34 @@ io.on("connection", (socket) => {
   // Broadcast online users
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
+// 🟢 When user comes online, mark all "sent" messages TO them as delivered
+Message.find({ receiverId: userId, status: "sent" })
+  .then(async (undeliveredMessages) => {
+    if (!undeliveredMessages.length) return;
+
+    const deliveredIds = undeliveredMessages.map((m) => m._id);
+
+    // Update in DB
+    await Message.updateMany(
+      { _id: { $in: deliveredIds } },
+      { $set: { status: "delivered" } }
+    );
+
+    // Notify all senders that their messages got delivered
+    for (const msg of undeliveredMessages) {
+      const senderSocketId = getReceiverSocketId(String(msg.senderId));
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("message_status_updated", {
+          messageId: msg._id,
+          status: "delivered",
+        });
+      }
+    }
+  })
+  .catch((err) => console.warn("Auto-delivery update failed:", err));
+
+
+
   // Relay public keys (still used for E2EE)
   socket.on("send-public-key", ({ to, publicKey }) => {
     const targetSocketId = getReceiverSocketId(to);
@@ -50,6 +79,42 @@ io.on("connection", (socket) => {
       });
     }
   });
+
+socket.on("message_delivered", async ({ messageId, senderId }) => {
+  try {
+    await Message.updateOne({ _id: messageId }, { status: "delivered" });
+    const senderSocketId = getReceiverSocketId(String(senderId));
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("message_status_updated", {
+        messageId,
+        status: "delivered",
+      });
+    }
+  } catch (err) {
+    console.warn("message_delivered error:", err);
+  }
+});
+
+
+socket.on("mark_as_read", async ({ senderId, receiverId }) => {
+  try {
+    await Message.updateMany(
+      { senderId, receiverId, status: { $ne: "read" } },
+      { $set: { status: "read" } }
+    );
+
+    const senderSocketId = getReceiverSocketId(String(senderId));
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messages_read", { senderId, receiverId });
+    }
+  } catch (err) {
+    console.warn("mark_as_read error:", err);
+  }
+});
+
+
+
+
 
   // ---------- Sketchboard ----------
   socket.on("join-sketch", ({ peerId }) => {

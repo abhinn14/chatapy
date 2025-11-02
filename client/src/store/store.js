@@ -39,10 +39,17 @@ export const useStore = create((set,get) => ({
       set({isLoggingIn:true});
       try {
         const res = await axiosInstance.post("/auth/login",formData);
-        set({authUser:res.data});
         toast.success("Logged in successfully");
-  
+        try {
+          const refreshed = await axiosInstance.get("/auth/check");
+          set({ authUser: refreshed.data });
+        } catch (e) {
+          set({ authUser: res.data }); // fallback if /check fails
+        }
+
         get().connectSocket();
+
+
       } catch(error) {
         toast.error(error.response.data.message);
       } finally {
@@ -54,9 +61,16 @@ export const useStore = create((set,get) => ({
         set({isSigningUp:true});
         try {
           const res = await axiosInstance.post("/auth/signup",formData);
-          set({authUser:res.data});
-          toast.success("Account created successfully");
+          toast.success("Logged in successfully");
+          try {
+            const refreshed = await axiosInstance.get("/auth/check");
+            set({ authUser: refreshed.data });
+          } catch (e) {
+            set({ authUser: res.data }); // fallback if /check fails
+          }
           get().connectSocket();
+
+
         } catch (error) {
           toast.error(error.response.data.message);
         } finally {
@@ -64,16 +78,30 @@ export const useStore = create((set,get) => ({
         }
     },
 
+
     logout: async () => {
-      try {
-        await axiosInstance.post("/auth/logout");
-        set({authUser:null});
-        toast.success("Logged out successfully");
-        get().disconnectSocket();
-      } catch (error) {
-        toast.error(error.response.data.message);
-      }
-    },
+  try {
+    await axiosInstance.post("/auth/logout");
+    set({ authUser: null });
+    toast.success("Logged out successfully");
+    get().disconnectSocket();
+
+    // 🧹 Reset chat store after logout
+    import("./useChatStore.js").then(({ useChatStore }) => {
+      useChatStore.setState({
+        selectedUser: null,
+        messages: [],
+        messagesByUser: {},
+        users: [],
+        aesKeys: {},
+        cryptoInitialized: false,
+      });
+    });
+  } catch (error) {
+    toast.error(error.response?.data?.message || "Logout failed");
+  }
+},
+
 
 
     connectSocket: () => {

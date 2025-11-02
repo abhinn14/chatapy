@@ -6,7 +6,9 @@ const NoChatSelected = () => {
       <div className="max-w-md text-center space-y-6">        
         <h2 className="text-2xl font-bold">Welcome to CHATAPY!</h2>
         <p className="text-base-content/60">
-          For your privacy, messages are encrypted per browser.<br/>You can only view past chats on the same browser.<br/>{"(◔◡◔)"}
+          For your privacy, your messages are encrypted and linked to the browser you use. 
+          This means you can only access past chats on the browser in which they were created.<br/>
+          {"(◔◡◔)"}
         </p>
       </div>
     </div>
