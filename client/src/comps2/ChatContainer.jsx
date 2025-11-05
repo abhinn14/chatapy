@@ -10,6 +10,37 @@ export default function ChatContainer() {
   const { authUser } = useStore();
   const messageEndRef = useRef(null);
 
+  // 🧠 Track messages we've already played sound for
+  const playedSoundIds = useRef(new Set());
+
+  // 🎵 Load your sound file (from /public/sounds)
+  const sentSound = useRef(typeof Audio !== "undefined" ? new Audio("/sounds/sent.mp3") : null);
+
+  useEffect(() => {
+    if (sentSound.current) sentSound.current.volume = 0.5; // adjust volume if needed
+  }, []);
+
+  // 🔊 Play sound when a new own message reaches "sent" status
+  useEffect(() => {
+    messages.forEach((msg) => {
+      const isOwnMessage = String(msg.senderId) === String(authUser._id);
+      const msgId = msg._id || msg.tempId;
+
+      if (
+        isOwnMessage &&
+        msg.status === "sent" &&
+        !playedSoundIds.current.has(msgId)
+      ) {
+        playedSoundIds.current.add(msgId);
+        if (sentSound.current) {
+          sentSound.current.currentTime = 0;
+          sentSound.current.play().catch(() => {}); // ignore autoplay errors
+        }
+      }
+    });
+  }, [messages, authUser._id]);
+
+  // Auto-scroll to bottom on new message
   useEffect(() => {
     if (messages && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -78,7 +109,7 @@ export default function ChatContainer() {
               ref={isLast ? messageEndRef : null}
             >
               <div className={bubbleClass}>
-                {/* Content */}
+                {/* Message Content */}
                 {isEncrypted ? (
                   <div
                     className="relative flex items-center justify-center gap-2 p-3 rounded-lg select-none bg-[rgba(255,255,255,0.1)] backdrop-blur-sm"
@@ -89,7 +120,6 @@ export default function ChatContainer() {
                   >
                     <span className="text-base">🔒</span>
                     <span className="text-sm font-semibold">Encrypted</span>
-                    {/* Optional shimmer overlay */}
                     <div className="absolute inset-0 rounded-lg backdrop-blur-md bg-[rgba(0,0,0,0.2)]" />
                   </div>
                 ) : isImage ? (
