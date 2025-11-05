@@ -14,7 +14,7 @@ export default function ChatContainer() {
   const playedSoundIds = useRef(new Set());
 
   // 🎵 Load your sound file (from /public/sounds)
-  const sentSound = useRef(typeof Audio !== "undefined" ? new Audio("/sounds/sent.mp3") : null);
+  const sentSound = useRef(typeof Audio !== "undefined" ? new Audio("/sounds/sent.wav") : null);
 
   useEffect(() => {
     if (sentSound.current) sentSound.current.volume = 0.5; // adjust volume if needed
