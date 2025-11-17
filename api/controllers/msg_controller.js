@@ -3,7 +3,6 @@ import Message from "../models/message.js";
 
 import { getReceiverSocketId, io } from "../library/socket.js";
 
-// this is for sidebar
 export const SidebarUsers = async (req, res) => {
   try {
     const UserId = req.user._id;
@@ -17,7 +16,6 @@ export const SidebarUsers = async (req, res) => {
   }
 };
 
-// for showing messages
 export const getMessages = async (req, res) => {
   try {
     const { id: userToChatId } = req.params;
@@ -28,7 +26,7 @@ export const getMessages = async (req, res) => {
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
-    }).sort({ createdAt: 1 }); // sorted from oldest to latest
+    }).sort({ createdAt: 1 });
 
     res.status(200).json(messages);
 
@@ -38,18 +36,6 @@ export const getMessages = async (req, res) => {
   }
 };
 
-/**
- * POST /api/message/send/:id
- *
- * Accepts body:
- * {
- *   encrypted: { iv: <base64>, ciphertext: <base64> },
- *   senderPublicKeyJwk: <object or json-string>
- * }
- *
- * Saves message, persists sender public JWK (sanitized), emits to recipient & sender sockets.
- */
-
 
 export const sendMessage = async (req, res) => {
   try {
@@ -57,10 +43,10 @@ export const sendMessage = async (req, res) => {
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
-    if (!type) type = "text";
+    if(!type) type = "text";
 
-    // ---- Normalize senderPublicKeyJwk ----
-    if (typeof senderPublicKeyJwk === "string") {
+    // Normalizing senderPublicKeyJwk
+    if(typeof senderPublicKeyJwk === "string") {
       try {
         senderPublicKeyJwk = JSON.parse(senderPublicKeyJwk);
       } catch {
@@ -68,13 +54,13 @@ export const sendMessage = async (req, res) => {
       }
     }
 
-    // If client didn’t send valid public key, use stored one
-    if (!senderPublicKeyJwk) {
+    // If client didn’t send valid public key, I'm taking from DB
+    if(!senderPublicKeyJwk) {
       const me = await User.findById(senderId).select("publicKeyJwk");
       senderPublicKeyJwk = me?.publicKeyJwk || null;
     }
 
-    if (!senderPublicKeyJwk || typeof senderPublicKeyJwk !== "object") {
+    if(!senderPublicKeyJwk || typeof senderPublicKeyJwk !== "object") {
       return res.status(400).json({ error: "Missing or invalid senderPublicKeyJwk" });
     }
 
@@ -82,12 +68,12 @@ export const sendMessage = async (req, res) => {
     delete senderPublicKeyJwk.d;
     delete senderPublicKeyJwk.privateKey;
 
-    if (!senderPublicKeyJwk.kty || !(senderPublicKeyJwk.x || senderPublicKeyJwk.n || senderPublicKeyJwk.crv)) {
+    if(!senderPublicKeyJwk.kty || !(senderPublicKeyJwk.x || senderPublicKeyJwk.n || senderPublicKeyJwk.crv)) {
       return res.status(400).json({ error: "Invalid public JWK format" });
     }
 
-    // ---- Validate and normalize encrypted payload ----
-    if (!encrypted || typeof encrypted !== "object") {
+    // validating encrypted payload
+    if(!encrypted || typeof encrypted !== "object") {
       return res.status(400).json({ error: "Encrypted payload missing or invalid" });
     }
 

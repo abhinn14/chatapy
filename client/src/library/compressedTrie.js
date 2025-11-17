@@ -1,11 +1,9 @@
-// library/compressedTrie.js
-
 class TrieNode {
   constructor(prefix = "") {
-    this.prefix = prefix; // substring stored in this node
+    this.prefix = prefix;
     this.isEndOfWord = false;
-    this.children = {}; // map of first char -> child node
-    this.user = null; // store user object if needed
+    this.children = {};
+    this.user = null;
   }
 }
 
@@ -14,14 +12,12 @@ export class CompressedTrie {
     this.root = new TrieNode();
   }
 
-  // 🧠 Helper: Find common prefix length between two strings
   commonPrefixLength(a, b) {
     let len = 0;
-    while (len < a.length && len < b.length && a[len] === b[len]) len++;
+    while(len < a.length && len < b.length && a[len] === b[len]) len++;
     return len;
   }
 
-  // 🏗️ Insert a user (word = user's name)
   insert(user) {
     let word = user.name.toLowerCase();
     let node = this.root;
@@ -71,6 +67,7 @@ export class CompressedTrie {
 
   // 🔍 Check if a full word exists (for testing)
   search(word) {
+    word = word.toLowerCase();
     let node = this.root;
     let i = 0;
 
@@ -92,6 +89,7 @@ export class CompressedTrie {
 
   // 🔎 Prefix search for dictionary-like lookup
   searchPrefix(prefix) {
+    prefix = prefix.toLowerCase();
     let node = this.root;
     let i = 0;
 

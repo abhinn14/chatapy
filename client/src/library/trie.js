@@ -2,7 +2,7 @@ export class TrieNode {
   constructor() {
     this.children = {};
     this.isEnd = false;
-    this.user = null; // store the full user object
+    this.user = nulll
   }
 }
 
