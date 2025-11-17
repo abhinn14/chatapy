@@ -4,28 +4,32 @@ import { axiosInstance } from "../library/axios.js";
 import { useStore } from "./store.js";
 import { savePrivateKeyToIndexedDB, getPrivateKeyFromIndexedDB } from "../library/secureKeys.js";
 
-/* ---------------- Utils ---------------- */
+
 function u8ToBase64(u8) {
   let binary = "";
-  for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i]);
+  for(let i=0; i<u8.length; i++)
+    binary += String.fromCharCode(u8[i]);
   return btoa(binary);
 }
 function base64ToU8(b64) {
   const binary = atob(b64);
   const len = binary.length;
   const u8 = new Uint8Array(len);
-  for (let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
+  for(let i=0; i<len; i++)
+    u8[i] = binary.charCodeAt(i);
   return u8;
 }
+
 async function generateECDHKeyPair() {
   const keyPair = await crypto.subtle.generateKey(
     { name: "ECDH", namedCurve: "P-256" },
-    true,                // extractable: true for the PUBLIC key only (private remains non-exportable by usage)
+    true,
     ["deriveKey"]
   );
   const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   return { keyPair, publicKeyJwk };
 }
+
 async function importPublicKey(jwk) {
   return crypto.subtle.importKey(
     "jwk",
@@ -35,16 +39,18 @@ async function importPublicKey(jwk) {
     []
   );
 }
+
 async function importPrivateKeyFromJwk(privJwk) {
-  // Only used for one-time migration from localStorage → IndexedDB
+  // Only used for one-time migration from localStorage to IndexedDB
   return crypto.subtle.importKey(
     "jwk",
     privJwk,
     { name: "ECDH", namedCurve: "P-256" },
-    false,               // ← non-extractable going forward
+    false,
     ["deriveKey"]
   );
 }
+
 async function deriveAESKey(privateKey, remotePublicKey) {
   return crypto.subtle.deriveKey(
     { name: "ECDH", public: remotePublicKey },
@@ -54,6 +60,7 @@ async function deriveAESKey(privateKey, remotePublicKey) {
     ["encrypt", "decrypt"]
   );
 }
+
 async function encryptMessage(plain, aesKey) {
   const encoder = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -68,34 +75,35 @@ async function decryptMessage({ iv, ciphertext }, aesKey) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ivU8 }, aesKey, ctU8);
   return decoder.decode(pt);
 }
+
 function normalizeId(msg) {
-  if (!msg) return null;
+  if(!msg) return null;
   return String(msg._id || msg.id || "");
 }
 
-/* ---------------- Zustand store ---------------- */
+
 export const useChatStore = create((set, get) => {
   function normalizeEncryptedFingerprint(encrypted) {
-    if (!encrypted) return null;
+    if(!encrypted) return null;
     return String(encrypted.ciphertext || "");
   }
 
   function findExistingMessageIndex(list, incomingMsg) {
-    if (!Array.isArray(list)) return -1;
+    if(!Array.isArray(list)) return -1;
     const incomingId = normalizeId(incomingMsg);
     const incomingCt = normalizeEncryptedFingerprint(incomingMsg.encrypted);
     const incomingCreated = incomingMsg.createdAt ? String(incomingMsg.createdAt) : null;
 
-    for (let i = 0; i < list.length; i++) {
+    for(let i=0; i<list.length; i++) {
       const m = list[i];
       const mid = normalizeId(m);
-      if (mid && incomingId && String(mid) === String(incomingId)) return i;
+      if(mid && incomingId && String(mid) === String(incomingId)) return i;
 
       const mct = normalizeEncryptedFingerprint(m.encrypted);
-      if (mct && incomingCt && mct === incomingCt) return i;
+      if(mct && incomingCt && mct === incomingCt) return i;
 
       const mcreated = m.createdAt ? String(m.createdAt) : null;
-      if (mcreated && incomingCreated && mcreated === incomingCreated) return i;
+      if(mcreated && incomingCreated && mcreated === incomingCreated) return i;
     }
     return -1;
   }
@@ -106,9 +114,8 @@ export const useChatStore = create((set, get) => {
       const list = map[userId] ? [...map[userId]] : [];
       const idx = findExistingMessageIndex(list, incomingMsg);
 
-      if (idx !== -1) {
+      if(idx !== -1) {
         const existing = list[idx];
-        // avoid downgrading decrypted text to locked placeholder
         const newIsLocked = !incomingMsg.text || incomingMsg.text === "🔒 Encrypted Message";
         const existingHasPlain = existing.text && existing.text !== "🔒 Encrypted Message";
         list[idx] = newIsLocked && existingHasPlain ? existing : { ...existing, ...incomingMsg };
@@ -126,8 +133,9 @@ export const useChatStore = create((set, get) => {
     });
   }
 
+
   return {
-    /* ---------- state ---------- */
+
     messages: [],
     users: [],
     selectedUser: null,
@@ -135,30 +143,28 @@ export const useChatStore = create((set, get) => {
     isMessagesLoading: false,
     messagesByUser: {},
 
-    // crypto state
-    keyPair: null,            // { privateKey: CryptoKey, publicKey: null }
-    publicKeyJwk: null,       // JWK (public only)
-    aesKeys: {},              // userId -> CryptoKey (AES-GCM)
+    keyPair: null,
+    publicKeyJwk: null,
+    aesKeys: {}, 
     cryptoInitialized: false,
 
-    /* ---------- crypto init ---------- */
+
     initCrypto: async () => {
-      if (get().cryptoInitialized) return;
+      if(get().cryptoInitialized) return;
 
       const { authUser } = useStore.getState();
-      if (!authUser) return;
+      if(!authUser) return;
 
       const userId = authUser._id;
       let privateKey = null;
       let publicKeyJwk = null;
 
-      // 1) Try loading a non-extractable private key from IndexedDB
+      // loading a non-extractable private key from IndexedDB
       try {
         privateKey = await getPrivateKeyFromIndexedDB();
-        if (privateKey) {
-          // public key: prefer local cache, else fetch from server
+        if(privateKey) {
           const localPub = localStorage.getItem(`pubkey_${userId}`);
-          if (localPub) {
+          if(localPub) {
             publicKeyJwk = JSON.parse(localPub);
           } else {
             try {
@@ -176,47 +182,16 @@ export const useChatStore = create((set, get) => {
         console.warn("IndexedDB read failed (will try migration / regeneration):", e);
       }
 
-      // 2) If no private key in IndexedDB, attempt one-time migration from localStorage JWK
-      if (!privateKey) {
-        try {
-          const legacyPrivJwkStr = localStorage.getItem(`privkey_${userId}`);
-          if (legacyPrivJwkStr) {
-            console.log("🔐 Migrating legacy private key from localStorage → IndexedDB");
-            const legacyPrivJwk = JSON.parse(legacyPrivJwkStr);
-            privateKey = await importPrivateKeyFromJwk(legacyPrivJwk);
-            await savePrivateKeyToIndexedDB(privateKey);
-            localStorage.removeItem(`privkey_${userId}`); // remove plaintext JWK after migrating
-
-            const localPub = localStorage.getItem(`pubkey_${userId}`);
-            if (localPub) {
-              publicKeyJwk = JSON.parse(localPub);
-            } else {
-              try {
-                const res = await axiosInstance.get(`/auth/user/${userId}/public-key`);
-                publicKeyJwk = res.data || null;
-                if (publicKeyJwk) {
-                  localStorage.setItem(`pubkey_${userId}`, JSON.stringify(publicKeyJwk));
-                }
-              } catch {
-                publicKeyJwk = null;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("Legacy private key migration failed:", e);
-        }
-      }
-
-      // 3) If still no private key, generate a brand-new pair and persist
-      if (!privateKey) {
+      // If still no private key, generating a new pair
+      if(!privateKey) {
         const gen = await generateECDHKeyPair();
         privateKey = gen.keyPair.privateKey;
         publicKeyJwk = gen.publicKeyJwk;
 
-        // Save private key securely in IndexedDB (non-extractable)
+        // Saving private key securely in IndexedDB (non-extractable)
         await savePrivateKeyToIndexedDB(privateKey);
 
-        // Cache public key and upload to server
+        // Caching public key and uploading to server
         try {
           localStorage.setItem(`pubkey_${userId}`, JSON.stringify(publicKeyJwk));
         } catch {}
@@ -227,16 +202,14 @@ export const useChatStore = create((set, get) => {
         }
       }
 
-      // NOTE: We never export the private key again.
       set({
         keyPair: { privateKey, publicKey: null },
         publicKeyJwk,
         cryptoInitialized: true,
       });
 
-      // Socket: receive peer public keys → derive AES
       const socket = useStore.getState().socket;
-      if (socket) {
+      if(socket) {
         socket.off("receive-public-key");
         socket.on("receive-public-key", async ({ from, publicKey }) => {
           try {
@@ -254,7 +227,6 @@ export const useChatStore = create((set, get) => {
       }
     },
 
-    /* ---------- users ---------- */
     getUsers: async () => {
       set({ isUsersLoading: true });
       try {
@@ -267,7 +239,6 @@ export const useChatStore = create((set, get) => {
       }
     },
 
-    /* ---------- messages ---------- */
     getMessages: async (userId) => {
       try {
         set({ isMessagesLoading: true });
@@ -278,7 +249,7 @@ export const useChatStore = create((set, get) => {
 
         const key = await waitForAESKey(userId, 5000, { tryOfflineDerive: true });
 
-        if (!key) {
+        if(!key) {
           set((state) => {
             const locked = msgs.map((m) => ({ ...m, text: "🔒 Encrypted Message" }));
             const newMap = { ...(state.messagesByUser || {}), [userId]: locked };
@@ -292,10 +263,9 @@ export const useChatStore = create((set, get) => {
           return;
         }
 
-        // Store AES key for this user
         set((s) => ({ aesKeys: { ...s.aesKeys, [userId]: key } }));
 
-        // Decrypt messages
+        // Decrypting messages
         const processed = await Promise.all(
           msgs.map(async (msg) => {
             if (msg.encrypted?.iv) {
@@ -310,7 +280,7 @@ export const useChatStore = create((set, get) => {
           })
         );
 
-        // Update local message state
+        // Updating local message state
         set((state) => {
           const newMap = { ...(state.messagesByUser || {}), [userId]: processed };
           const shouldSet = state.selectedUser && String(state.selectedUser._id) === String(userId);
@@ -321,19 +291,18 @@ export const useChatStore = create((set, get) => {
           };
         });
 
-        // Auto-mark as read
+        // Auto mark as read
         const me = useStore.getState().authUser;
         const socket = useStore.getState().socket;
-        if (socket && me) {
+        if(socket && me) {
           socket.emit("mark_as_read", { senderId: userId, receiverId: me._id });
         }
-      } catch (e) {
+      } catch(e) {
         console.error("getMessages error:", e);
         set({ isMessagesLoading: false });
       }
     },
 
-    /* ---------- selection ---------- */
     setSelectedUser: async (user) => {
       const cached = get().messagesByUser?.[user._id] || [];
       set({ selectedUser: user, messages: cached, isMessagesLoading: true });
@@ -341,40 +310,40 @@ export const useChatStore = create((set, get) => {
       const { publicKeyJwk, aesKeys } = get();
       const socket = useStore.getState().socket;
       const me = useStore.getState().authUser;
-      if (socket && me) {
+      if(socket && me) {
         socket.emit("mark_as_read", { senderId: user._id, receiverId: me._id });
       }
 
-      if (publicKeyJwk && socket && !aesKeys[user._id]) {
+      if(publicKeyJwk && socket && !aesKeys[user._id]) {
         socket.emit("send-public-key", { to: user._id, publicKey: publicKeyJwk });
       }
       await get().getMessages(user._id);
 
-      // mark-as-read for this chat now open
-      if (socket) {
+      // marking as read for this chat now open
+      if(socket) {
         const me2 = useStore.getState().authUser;
         if (me2) socket.emit("mark_as_read", { senderId: user._id, receiverId: me2._id });
       }
     },
 
-    /* ---------- send with optimistic "loading" + receipts ---------- */
+
     sendMessage: async (content, type = "text") => {
       const { selectedUser } = get();
       const { authUser } = useStore.getState();
-      if (!selectedUser) return;
+      if(!selectedUser) return;
 
       const key = await waitForAESKey(selectedUser._id, 3000, { tryOfflineDerive: true });
-      if (!key) {
+      if(!key) {
         toast.error("Encryption key not ready!");
         return;
       }
 
       try {
-        // 1) encrypt FIRST so temp and server share the same ciphertext
+        // encrypting FIRST so temp and server share the same ciphertext
         const encrypted = await encryptMessage(content, key);
         const pubJwk = get().publicKeyJwk;
 
-        // 2) optimistic temp with encrypted (for merge)
+        // optimistic temp with encrypted (for merge)
         const tempId = crypto.randomUUID();
         const tempMsg = {
           tempId,
@@ -383,26 +352,26 @@ export const useChatStore = create((set, get) => {
           text: content,
           type,
           status: "loading",
-          encrypted,                                  // ← critical for dedupe
+          encrypted,
           createdAt: new Date().toISOString(),
         };
         upsertMessageForUser(String(selectedUser._id), tempMsg);
         set({ messages: get().messagesByUser[String(selectedUser._id)] });
 
-        // 3) send to server
+        // sending to server
         const res = await axiosInstance.post(`/message/send/${selectedUser._id}`, {
           encrypted,
           senderPublicKeyJwk: pubJwk,
           type,
         });
 
-        // 4) decrypt the saved payload for UI
+        // decrypting the saved payload for UI
         let decryptedText = "🔒 Encrypted Message";
         try { decryptedText = await decryptMessage(res.data.encrypted, key); } catch {}
 
         const { _id, createdAt } = res.data || {};
 
-        // 5) PATCH the existing temp (by ciphertext) instead of pushing a new message
+        // Patching the existing temp (by ciphertext) instead of pushing a new message
         set((state) => {
           const uid = String(selectedUser._id);
           const bucket = state.messagesByUser[uid] || [];
@@ -412,10 +381,10 @@ export const useChatStore = create((set, get) => {
             if (mc && rc && mc === rc) {
               return {
                 ...m,
-                _id,                         // server id
+                _id,
                 createdAt: createdAt || m.createdAt,
-                status: "sent",              // persisted state
-                text: decryptedText,         // server-confirmed (still same text)
+                status: "sent",
+                text: decryptedText,
               };
             }
             return m;
@@ -431,12 +400,11 @@ export const useChatStore = create((set, get) => {
       }
     },
 
-    /* ---------- realtime: subscribe incl. delivery/read ---------- */
+
     subscribeToMessages: () => {
       const socket = useStore.getState().socket;
-      if (!socket) return;
+      if(!socket) return;
 
-      // Remove previous listeners
       socket.removeAllListeners("newMessage");
       socket.removeAllListeners("message_status_updated");
       socket.removeAllListeners("messages_read");
@@ -444,7 +412,7 @@ export const useChatStore = create((set, get) => {
       const getLocal = useChatStore.getState;
       const setLocal = useChatStore.setState;
 
-      /* 🟢 New message listener (handles encryption + instant read) */
+      // New message listener (handles encryption + instant read)
       socket.on("newMessage", async ({ from, msg }) => {
         const { authUser } = useStore.getState();
         const isOwn = String(msg.senderId) === String(authUser._id);
@@ -465,7 +433,7 @@ export const useChatStore = create((set, get) => {
           setLocal({ messages: getLocal().messagesByUser[chatUserId] });
         }
 
-        // 🟢 Only receiver handles delivery & read
+        // Only receiver handles delivery & read
         if (!isOwn) {
           const me = useStore.getState().authUser;
           const { selectedUser } = getLocal();
@@ -473,9 +441,9 @@ export const useChatStore = create((set, get) => {
           // Acknowledge delivery once
           socket.emit("message_delivered", { messageId: msg._id, senderId: msg.senderId });
 
-          // 🕓 Debounced "read" emit only if chat is currently open
+          // Debounced "read" emit only if chat is currently open
           const isChatOpen = selectedUser && String(selectedUser._id) === String(msg.senderId);
-          if (isChatOpen) {
+          if(isChatOpen) {
             clearTimeout(window._readDebounce);
             window._readDebounce = setTimeout(() => {
               socket.emit("mark_as_read", { senderId: msg.senderId, receiverId: me._id });
@@ -484,7 +452,7 @@ export const useChatStore = create((set, get) => {
         }
       });
 
-      /* 🟠 Delivery / Read status updates */
+      // Delivery / Read status updates
       socket.on("message_status_updated", ({ messageId, status }) => {
         setLocal((state) => {
           const byUser = { ...(state.messagesByUser || {}) };
@@ -512,7 +480,7 @@ export const useChatStore = create((set, get) => {
         });
       });
 
-      /* 🔵 Read receipt: sender instantly updates ✓✓ blue */
+      // sender instantly updates blue 
       socket.on("messages_read", ({ senderId, receiverId }) => {
         const me = useStore.getState().authUser;
         const myId = String(me._id);
@@ -520,9 +488,9 @@ export const useChatStore = create((set, get) => {
         setLocal((state) => {
           const byUser = { ...(state.messagesByUser || {}) };
 
-          for (const [uid, msgs] of Object.entries(byUser)) {
+          for(const [uid, msgs] of Object.entries(byUser)) {
             byUser[uid] = msgs.map((m) => {
-              // ✅ Messages I SENT to that receiver should turn "read"
+              // Messages I SENT to that receiver should turn "read"
               if (
                 String(m.senderId) === myId &&
                 String(m.receiverId) === String(receiverId)
@@ -553,14 +521,14 @@ export const useChatStore = create((set, get) => {
   };
 });
 
-/* ---------------- waitForAESKey (unchanged behavior) ---------------- */
+
 async function waitForAESKey(userId, timeoutMs = 2000, options = { tryOfflineDerive: true }) {
   const start = Date.now();
   const getState = () => useChatStore.getState();
   const setState = (patch) => useChatStore.setState(patch);
 
   const existing = getState().aesKeys?.[userId];
-  if (existing) return existing;
+  if(existing) return existing;
 
   return new Promise((resolve) => {
     const interval = setInterval(async () => {

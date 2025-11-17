@@ -97,7 +97,7 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ error: "Invalid encrypted payload parts" });
     }
 
-    // ---- Save message (initially as "sent") ----
+    // Saving message (initially as "sent")
     const newMessage = new Message({
       senderId,
       receiverId,
@@ -111,14 +111,14 @@ export const sendMessage = async (req, res) => {
     const savedMessage = await newMessage.save();
     const payload = savedMessage.toObject ? savedMessage.toObject() : savedMessage;
 
-    // ---- Emit to both sender & receiver ----
+    // Emitting to both sender & receiver
     try {
       const receiverSocketId = getReceiverSocketId(String(receiverId));
       const senderSocketId = getReceiverSocketId(String(senderId));
 
-      // 1️⃣ Receiver online → deliver immediately
-      if (receiverSocketId) {
-        // Only send to receiver — don't mark delivered yet.
+      // If receiver online so deliver immediately
+      if(receiverSocketId) {
+        // Only send to receiver, don't mark delivered yet.
         io.to(receiverSocketId).emit("newMessage", {
           from: String(senderId),
           msg: payload,
@@ -133,8 +133,7 @@ export const sendMessage = async (req, res) => {
         }
       } 
 
-      // 3️⃣ Always echo back to sender (sync across tabs)
-      if (senderSocketId) {
+      if(senderSocketId) {
         io.to(senderSocketId).emit("newMessage", {
           from: String(senderId),
           msg: payload,
@@ -144,8 +143,8 @@ export const sendMessage = async (req, res) => {
       console.warn("[sendMessage] socket emit failed (non-fatal):", emitErr);
     }
 
-    // ---- Respond to client ----
     return res.status(201).json(payload);
+
   } catch (error) {
     console.error("[sendMessage] unexpected error:", error);
     try {

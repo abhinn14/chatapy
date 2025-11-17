@@ -1,4 +1,3 @@
-// src/library/secureKeys.js
 export async function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("secureKeysDB", 1);

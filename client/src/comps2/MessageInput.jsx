@@ -29,7 +29,6 @@ export default function MessageInput() {
         return;
       }
 
-      // text message
       await sendMessage(text.trim(), "text");
       setText("");
       setIsSending(false);
@@ -57,7 +56,6 @@ export default function MessageInput() {
 
   return (
     <div className="p-4 w-full border-t border-base-300">
-      {/* If preview exists: show preview-only UI */}
       {preview ? (
         <form
           onSubmit={handleSendMessage}
@@ -92,7 +90,6 @@ export default function MessageInput() {
               disabled={isSending}
             >
               {isSending ? (
-                // minimal spinner (native)
                 <svg
                   className="animate-spin h-5 w-5"
                   viewBox="0 0 24 24"
@@ -128,7 +125,6 @@ export default function MessageInput() {
               onChange={handleFileChange}
             />
 
-            {/* Image button: move the entire button down slightly so circle aligns with send */}
             <button
               type="button"
               className="btn btn-sm btn-circle relative top-[1px]"
@@ -139,7 +135,6 @@ export default function MessageInput() {
             </button>
           </div>
 
-          {/* Send button: same vertical nudge so both buttons align perfectly */}
           <button
             type="submit"
             className="btn btn-sm btn-circle relative top-[1px]"

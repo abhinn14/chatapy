@@ -44,7 +44,7 @@ export const useStore = create((set,get) => ({
           const refreshed = await axiosInstance.get("/auth/check");
           set({ authUser: refreshed.data });
         } catch (e) {
-          set({ authUser: res.data }); // fallback if /check fails
+          set({ authUser: res.data });
         }
 
         get().connectSocket();
@@ -66,7 +66,7 @@ export const useStore = create((set,get) => ({
             const refreshed = await axiosInstance.get("/auth/check");
             set({ authUser: refreshed.data });
           } catch (e) {
-            set({ authUser: res.data }); // fallback if /check fails
+            set({ authUser: res.data });
           }
           get().connectSocket();
 
@@ -80,39 +80,36 @@ export const useStore = create((set,get) => ({
 
 
     logout: async () => {
-  try {
-    await axiosInstance.post("/auth/logout");
-    set({ authUser: null });
-    toast.success("Logged out successfully");
-    get().disconnectSocket();
+      try {
+        await axiosInstance.post("/auth/logout");
+        set({ authUser: null });
+        toast.success("Logged out successfully");
+        get().disconnectSocket();   
 
-    // 🧹 Reset chat store after logout
-    import("./useChatStore.js").then(({ useChatStore }) => {
-      useChatStore.setState({
-        selectedUser: null,
-        messages: [],
-        messagesByUser: {},
-        users: [],
-        aesKeys: {},
-        cryptoInitialized: false,
-      });
-    });
-  } catch (error) {
-    toast.error(error.response?.data?.message || "Logout failed");
-  }
-},
-
+        // Resetting chat store after logout
+        import("./useChatStore.js").then(({ useChatStore }) => {
+          useChatStore.setState({
+            selectedUser: null,
+            messages: [],
+            messagesByUser: {},
+            users: [],
+            aesKeys: {},
+            cryptoInitialized: false,
+          });
+        });
+      } catch (error) {
+        toast.error(error.response?.data?.message || "Logout failed");
+      }
+    },
 
 
     connectSocket: () => {
       const { authUser } = get();
       if(!authUser) return;
 
-      // if already connected/connecting
       if(get().socket?.connected || get().socket?._connecting)
         return;
 
-      // creating socket with query userId, server expects query.userId
       const socket = io(BASE_URL, {
         query: { userId: authUser._id },
         transports: ["websocket", "polling"],
@@ -143,6 +140,5 @@ export const useStore = create((set,get) => ({
         get().socket.disconnect();
       }
     },
-
 
 }));

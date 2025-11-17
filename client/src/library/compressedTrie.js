@@ -27,8 +27,7 @@ export class CompressedTrie {
       const key = word[i];
       const childExists = key in node.children;
 
-      // No child with that starting letter → new node
-      if (!childExists) {
+      if(!childExists) {
         const newNode = new TrieNode(word.slice(i));
         newNode.isEndOfWord = true;
         newNode.user = user;
@@ -36,12 +35,10 @@ export class CompressedTrie {
         return;
       }
 
-      // Otherwise, find the overlap
       const child = node.children[key];
       const prefixLen = this.commonPrefixLength(word.slice(i), child.prefix);
 
-      // If partial overlap → split the node
-      if (prefixLen < child.prefix.length) {
+      if(prefixLen < child.prefix.length) {
         const newChild = new TrieNode(child.prefix.slice(prefixLen));
         newChild.children = child.children;
         newChild.isEndOfWord = child.isEndOfWord;
@@ -56,7 +53,6 @@ export class CompressedTrie {
       i += prefixLen;
       node = child;
 
-      // If the word is fully consumed → mark as end
       if (i === word.length) {
         node.isEndOfWord = true;
         node.user = user;
@@ -65,20 +61,19 @@ export class CompressedTrie {
     }
   }
 
-  // 🔍 Check if a full word exists (for testing)
   search(word) {
     word = word.toLowerCase();
     let node = this.root;
     let i = 0;
 
-    while (i < word.length) {
+    while(i < word.length) {
       const key = word[i];
       if (!(key in node.children)) return false;
 
       const child = node.children[key];
       const prefixLen = this.commonPrefixLength(word.slice(i), child.prefix);
 
-      if (prefixLen !== child.prefix.length) return false;
+      if(prefixLen !== child.prefix.length) return false;
 
       i += prefixLen;
       node = child;
@@ -87,20 +82,19 @@ export class CompressedTrie {
     return node.isEndOfWord;
   }
 
-  // 🔎 Prefix search for dictionary-like lookup
   searchPrefix(prefix) {
     prefix = prefix.toLowerCase();
     let node = this.root;
     let i = 0;
 
-    while (i < prefix.length) {
+    while(i < prefix.length) {
       const key = prefix[i];
       if (!(key in node.children)) return [];
 
       const child = node.children[key];
       const prefixLen = this.commonPrefixLength(prefix.slice(i), child.prefix);
 
-      if (prefixLen < child.prefix.length && prefixLen < prefix.length - i)
+      if(prefixLen < child.prefix.length && prefixLen < prefix.length - i)
         return [];
 
       i += prefixLen;
@@ -110,11 +104,10 @@ export class CompressedTrie {
     return this._collect(node);
   }
 
-  // 📦 Collect all words/users below a given node
   _collect(node) {
     let results = [];
-    if (node.isEndOfWord && node.user) results.push(node.user);
-    for (const key in node.children) {
+    if(node.isEndOfWord && node.user) results.push(node.user);
+    for(const key in node.children) {
       results = results.concat(this._collect(node.children[key]));
     }
     return results;

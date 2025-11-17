@@ -10,7 +10,6 @@ export default function Navbar() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Upload handler with tolerant response
   const handleProfilePicChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -19,19 +18,17 @@ export default function Navbar() {
     reader.onloadend = async () => {
       const base64 = reader.result;
 
-      // Show preview instantly
       setAuthUser((prev) => ({ ...prev, profilePic: base64 }));
       setIsUploading(true);
 
       try {
-        console.log("📤 Uploading image...");
+        console.log("Uploading image...");
         const res = await axiosInstance.put("/auth/update-profile", {
           profilePic: base64,
         });
 
-        // Backend successfully responded
         if (res.data?.success) {
-          console.log("✅ Upload complete:", res.data.profilePic);
+          console.log("Upload complete:", res.data.profilePic);
 
           setAuthUser((prev) => ({
             ...prev,
@@ -49,13 +46,12 @@ export default function Navbar() {
           }, 500);
 
         } else {
-          console.warn("⚠️ No success flag, assuming slow Cloudinary...");
+          console.warn("No success flag, assuming slow Cloudinary...");
           alert("✅ Profile picture will appear shortly.");
           setTimeout(() => window.location.reload(), 1500);
         }
       } catch (error) {
-        //  If timeout or other delay occurs
-        console.warn("⚠️ Upload may still be processing:", error.message);
+        console.warn("Upload may still be processing:", error.message);
         alert("Picture saved! It will appear shortly after refresh.");
         setTimeout(() => window.location.reload(), 2000);
       } finally {

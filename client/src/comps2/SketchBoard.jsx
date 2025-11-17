@@ -61,7 +61,7 @@ export default function SketchBoard({ onClose }) {
       socket.off("sketch-stroke");
       socket.off("sketch-cleared");
     };
-  }, [socket, peerId]); // eslint-disable-line
+  }, [socket, peerId]);
 
   // Canvas setup & resize handling
   useEffect(() => {
@@ -86,7 +86,6 @@ export default function SketchBoard({ onClose }) {
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
     return () => window.removeEventListener("resize", resizeCanvas);
-    // eslint-disable-next-line
   }, []);
 
   // Clear only local canvas

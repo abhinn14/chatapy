@@ -32,44 +32,39 @@ export function getReceiverSocketId(userId) {
 io.on("connection", (socket) => {
   console.log("A user connected", socket.id);
 
-  // naive auth: grab userId from query
   const userId = socket.handshake.query?.userId;
-  if (userId) {
+  if(userId) {
     userSocketMap[String(userId)] = socket.id;
   }
 
-  // Broadcast online users
+  // Broadcasting online users
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-// 🟢 When user comes online, mark all "sent" messages TO them as delivered
-Message.find({ receiverId: userId, status: "sent" })
-  .then(async (undeliveredMessages) => {
-    if (!undeliveredMessages.length) return;
+  // When user comes online, marking all "sent" messages to them as delivered
+  Message.find({ receiverId: userId, status: "sent" })
+    .then(async (undeliveredMessages) => {
 
-    const deliveredIds = undeliveredMessages.map((m) => m._id);
+      if(!undeliveredMessages.length) return;
+      const deliveredIds = undeliveredMessages.map((m) => m._id);
+      await Message.updateMany(
+        { _id: { $in: deliveredIds } },
+        { $set: { status: "delivered" } }
+      );
 
-    // Update in DB
-    await Message.updateMany(
-      { _id: { $in: deliveredIds } },
-      { $set: { status: "delivered" } }
-    );
-
-    // Notify all senders that their messages got delivered
-    for (const msg of undeliveredMessages) {
-      const senderSocketId = getReceiverSocketId(String(msg.senderId));
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("message_status_updated", {
-          messageId: msg._id,
-          status: "delivered",
-        });
+      // Notifying all senders that their messages got delivered
+      for(const msg of undeliveredMessages) {
+        const senderSocketId = getReceiverSocketId(String(msg.senderId));
+        if(senderSocketId) {
+          io.to(senderSocketId).emit("message_status_updated", {
+            messageId: msg._id,
+            status: "delivered",
+          });
+        }
       }
-    }
-  })
-  .catch((err) => console.warn("Auto-delivery update failed:", err));
+    }).catch((err) => console.warn("Auto-delivery update failed:", err));
 
 
 
-  // Relay public keys (still used for E2EE)
   socket.on("send-public-key", ({ to, publicKey }) => {
     const targetSocketId = getReceiverSocketId(to);
     if (targetSocketId) {
@@ -80,43 +75,42 @@ Message.find({ receiverId: userId, status: "sent" })
     }
   });
 
-socket.on("message_delivered", async ({ messageId, senderId }) => {
-  try {
-    await Message.updateOne({ _id: messageId }, { status: "delivered" });
-    const senderSocketId = getReceiverSocketId(String(senderId));
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("message_status_updated", {
-        messageId,
-        status: "delivered",
-      });
+  socket.on("message_delivered", async ({ messageId, senderId }) => {
+    try {
+      await Message.updateOne({ _id: messageId }, { status: "delivered" });
+      const senderSocketId = getReceiverSocketId(String(senderId));
+      if(senderSocketId) {
+        io.to(senderSocketId).emit("message_status_updated", {
+          messageId,
+          status: "delivered",
+        });
+      }
+    } catch (err) {
+      console.warn("message_delivered error:", err);
     }
-  } catch (err) {
-    console.warn("message_delivered error:", err);
-  }
-});
+  });
 
 
-socket.on("mark_as_read", async ({ senderId, receiverId }) => {
-  try {
-    await Message.updateMany(
-      { senderId, receiverId, status: { $ne: "read" } },
-      { $set: { status: "read" } }
-    );
+  socket.on("mark_as_read", async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, status: { $ne: "read" } },
+        { $set: { status: "read" } }
+      );
 
-    const senderSocketId = getReceiverSocketId(String(senderId));
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messages_read", { senderId, receiverId });
+      const senderSocketId = getReceiverSocketId(String(senderId));
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messages_read", { senderId, receiverId });
+      }
+    } catch (err) {
+      console.warn("mark_as_read error:", err);
     }
-  } catch (err) {
-    console.warn("mark_as_read error:", err);
-  }
-});
+  });
 
 
 
+  //  Sketchboard code
 
-
-  // ---------- Sketchboard ----------
   socket.on("join-sketch", ({ peerId }) => {
     if (!userId || !peerId) return;
     const roomId = getRoomId(userId, peerId);
@@ -183,12 +177,12 @@ socket.on("mark_as_read", async ({ senderId, receiverId }) => {
     }
   });
 
-  // ---------- Disconnect ----------
+  // On disconnect
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.id);
 
     // cleanup user socket map
-    for (const [uid, sid] of Object.entries(userSocketMap)) {
+    for(const [uid, sid] of Object.entries(userSocketMap)) {
       if (sid === socket.id) {
         delete userSocketMap[uid];
         break;

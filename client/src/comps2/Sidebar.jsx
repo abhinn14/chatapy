@@ -15,23 +15,19 @@ const Sidebar = () => {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // ✅ Build the Trie once when users change
   const trie = useMemo(() => {
     const t = new CompressedTrie();
     users.forEach((u) => t.insert(u));
     return t;
   }, [users]);
 
-  // ✅ Filter based on search prefix + online toggle
   const filteredUsers = useMemo(() => {
     let list = users;
 
-    // Prefix search via Trie
     if (debouncedSearch.trim()) {
       list = trie.searchPrefix(debouncedSearch);
     }
 
-    // Online-only filter
     if (showOnlineOnly) {
       list = list.filter((user) => onlineUsers.includes(user._id));
     }
@@ -54,7 +50,7 @@ const Sidebar = () => {
           <span className="font-medium hidden lg:block text-white">Contacts</span>
         </div>
 
-        {/* ✅ Search bar */}
+        {/* Search bar */}
         <div className="relative mt-3 hidden lg:block">
           <Search className="absolute left-2 top-2.5 text-zinc-400 size-4" />
           <input

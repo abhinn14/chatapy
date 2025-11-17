@@ -1,5 +1,3 @@
-import React from 'react';
-import toast from "react-hot-toast";
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from "lucide-react";

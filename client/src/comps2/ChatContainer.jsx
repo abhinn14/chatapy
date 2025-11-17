@@ -10,17 +10,14 @@ export default function ChatContainer() {
   const { authUser } = useStore();
   const messageEndRef = useRef(null);
 
-  // 🧠 Track messages we've already played sound for
   const playedSoundIds = useRef(new Set());
 
-  // 🎵 Load your sound file (from /public/sounds)
   const sentSound = useRef(typeof Audio !== "undefined" ? new Audio("/sounds/sent.wav") : null);
 
   useEffect(() => {
-    if (sentSound.current) sentSound.current.volume = 0.5; // adjust volume if needed
+    if (sentSound.current) sentSound.current.volume = 0.5;
   }, []);
 
-  // 🔊 Play sound when a new own message reaches "sent" status
   useEffect(() => {
     messages.forEach((msg) => {
       const isOwnMessage = String(msg.senderId) === String(authUser._id);
@@ -34,13 +31,12 @@ export default function ChatContainer() {
         playedSoundIds.current.add(msgId);
         if (sentSound.current) {
           sentSound.current.currentTime = 0;
-          sentSound.current.play().catch(() => {}); // ignore autoplay errors
+          sentSound.current.play().catch(() => {});
         }
       }
     });
   }, [messages, authUser._id]);
 
-  // Auto-scroll to bottom on new message
   useEffect(() => {
     if (messages && messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -57,7 +53,6 @@ export default function ChatContainer() {
     });
   };
 
-  // Read receipts
   const renderMessageStatus = (status) => {
     switch (status) {
       case "loading":
