@@ -6,20 +6,20 @@ A **real-time chat application** built with the **MERN stack**, **JWT authentica
 
 ---
 
-## ✨ Features
-- ⚡ Real-time messaging with **Socket.IO**, supporting concurrent users with **<100ms latency**
-- 🔒 **End-to-End Encryption (E2EE)** implemented using the **Web Crypto API**
-- 👤 Secure authentication & authorization with **JWT**
-- 🎨 Responsive **React frontend** with **Zustand** for state management
-- ✅ Robust error handling for better user experience
-- ☁️ **MongoDB Atlas** for persistent message storage
+## Features
+- Real-time messaging with **Socket.IO**, supporting concurrent users with **<100ms latency**
+- **End-to-End Encryption (E2EE)** implemented using the **Web Crypto API**
+- Secure authentication & authorization with **JWT**
+- Responsive **React frontend** with **Zustand** for state management
+- Robust error handling for better user experience
+- **MongoDB Atlas** for persistent message storage
 
 ---
 
-## 🛠️ Tech Stack
-- **Frontend:** React, Zustand, Tailwind CSS (or CSS framework of choice)
+## Tech Stack
+- **Frontend:** React, Zustand, Tailwind CSS
 - **Backend:** Node.js, Express.js
 - **Database:** MongoDB + Mongoose
 - **Real-time:** Socket.IO
-- **Encryption:** Web Crypto API (AES-GCM + RSA for key exchange)
+- **Encryption:** Web Crypto API (AES-GCM + Elliptic Curve Diffie-Hellman for key exchange)
 - **Auth:** JWT (JSON Web Tokens)
