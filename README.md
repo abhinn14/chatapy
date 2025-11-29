@@ -2,7 +2,7 @@
 
 A **real-time chat application** built with the **MERN stack**, **JWT authentication**, and **Socket.IO** that ensures secure communication with **end-to-end encryption (E2EE)**.  
 
-🌐 [Live Demo](chatapy.onrender.com)
+🌐 [Live Demo](https://chatapy.onrender.com)
 
 ---
 
