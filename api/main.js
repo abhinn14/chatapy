@@ -10,7 +10,7 @@ import path from "path";
 
 import routes from "./routes/auth.js";
 import message_routes from "./routes/message.js";
-import healthRoute from "./routes/healthRoute.js";
+import healthRoute from "./routes/health.js";
 
 const PORT = process.env.PORT;
 const __dirname = path.resolve();
