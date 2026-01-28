@@ -33,6 +33,10 @@ if(process.env.NODE_ENV === "production") {
     });
 }
 
+app.use("/health", (req, res) => {
+    res.status(200).send("API is running....");
+});
+
 server.listen(PORT, async () => {
   console.log(`server is running on ${PORT}`);
     try {
