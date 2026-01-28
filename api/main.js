@@ -10,6 +10,7 @@ import path from "path";
 
 import routes from "./routes/auth.js";
 import message_routes from "./routes/message.js";
+import healthRoute from "./routes/healthRoute.js";
 
 const PORT = process.env.PORT;
 const __dirname = path.resolve();
@@ -32,9 +33,7 @@ if(process.env.NODE_ENV === "production") {
     });
 }
 
-app.use("/api/health", (req, res) => {
-    res.status(200).send("API is running....");
-});
+app.use("/api", healthRoute);
 
 server.listen(PORT, async () => {
   console.log(`server is running on ${PORT}`);
