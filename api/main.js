@@ -22,7 +22,6 @@ app.use(cors({
     credentials: true,
 }));
 
-
 app.use("/api/auth",routes);
 app.use("/api/message",message_routes);
 
@@ -33,7 +32,7 @@ if(process.env.NODE_ENV === "production") {
     });
 }
 
-app.use("/health", (req, res) => {
+app.use("/api/health", (req, res) => {
     res.status(200).send("API is running....");
 });
 
